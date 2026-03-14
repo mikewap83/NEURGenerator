@@ -39,7 +39,7 @@
 2. GSON
 3. GTimer
 4. ESP32Ping
-5. 
+   
 ### Использование
 
 ```cpp
