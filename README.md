@@ -23,6 +23,23 @@
 **Вручную:**
 Скопируйте папку `NEURGenerator` в `Documents/Arduino/libraries/`
 
+## Зависимости
+
+Для работы библиотеки необходимы:
+
+- [GyverHTTP](https://github.com/GyverLibs/GyverHTTP) - HTTP клиент
+- [GSON](https://github.com/GyverLibs/GSON) - Парсер JSON
+- [GTimer](https://github.com/GyverLibs/GTimer) - Таймеры
+- [ESP32Ping](https://github.com/marian-craciunescu/ESP32Ping) - Проверка доступности хоста
+
+### Установка зависимостей
+
+Через Arduino IDE Library Manager:
+1. GyverHTTP
+2. GSON
+3. GTimer
+4. ESP32Ping
+5. 
 ### Использование
 
 ```cpp
