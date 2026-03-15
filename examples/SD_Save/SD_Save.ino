@@ -27,7 +27,7 @@ const char* myMemoryEmail = "YOUR_EMAIL@DOMAIN.COM";
 
 esp_task_wdt_config_t twdt_config = {
   .timeout_ms = 10000,  // 10 секунд
-  .idle_core_mask = (1 << CONFIG_FREERTOS_NUMBER_OF_CORES) - 1,
+  .idle_core_mask = (1 << 2) - 1,
   .trigger_panic = false,
 };
 #endif
