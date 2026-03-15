@@ -33,7 +33,7 @@ esp_task_wdt_config_t twdt_config = {
 #endif
 
 // Создаем объект генератора
-NEURGenerator* generator = nullptr;
+NEURGenerator generator;
 
 // Счетчик для имен файлов
 int imageCounter = 0;
@@ -48,8 +48,8 @@ void onRenderEnd() {
   Serial.println("✅ Генерация завершена!");
 
   // Получаем данные изображения
-  uint8_t* imageData = generator->getImageData();
-  size_t imageSize = generator->getImageDataSize();
+  uint8_t* imageData = generator.getImageData();
+  size_t imageSize = generator.getImageDataSize();
 
   if (imageData && imageSize > 0) {
     // Создаем имя файла
@@ -71,15 +71,15 @@ void onRenderEnd() {
       Serial.println("❌ Не удалось создать файл на SD карте");
     }
 
-    // Очищаем буфер
-    generator->clearImageData();
+    // Очищаем буфер но можно и не очищать потом может пригодится
+    //generator.clearImageData();
   }
 }
 
 // Callback при ошибке генерации
 void onRenderErr() {
   Serial.print("❌ Ошибка генерации: ");
-  Serial.println(generator->getStateStatus(true));
+  Serial.println(generator.getStateStatus(true));
 }
 
 // Callback при принудительной остановке
@@ -119,30 +119,31 @@ void setup() {
   Serial.println("✅ WDT инициализирован");
 #endif
 
-  // Создаем объект генератора с ключами
-  generator = new NEURGenerator(apiKey, privateKey, myMemoryEmail);
+  // Устанавливаем ключи
+  generator.setKeySecret(apiKey, privateKey);
+  generator.setMyMemmory(myMemoryEmail);
 
   // Устанавливаем callback'и
-  generator->onRenderRun(onRenderRun);
-  generator->onRenderEnd(onRenderEnd);
-  generator->onRenderErr(onRenderErr);
-  generator->onRenderUnd(onRenderUnd);
-  generator->onRenderEng(onRenderEng);
+  generator.onRenderRun(onRenderRun);
+  generator.onRenderEnd(onRenderEnd);
+  generator.onRenderErr(onRenderErr);
+  generator.onRenderUnd(onRenderUnd);
+  generator.onRenderEng(onRenderEng);
 
   // Настройка параметров
-  generator->setUseHeads(true);      // Использовать заголовки
-  generator->setUsePings(true);      // Использовать ping
-  generator->setUseLoges(true);      // Выводить логи
+  generator.setUseHeads(true);      // Использовать заголовки
+  generator.setUsePings(true);      // Использовать ping
+  generator.setUseLoges(true);      // Выводить логи
 
 #if USE_WDT
-  generator->setUseTasks(true);      // Разрешить сброс WDT
-  generator->setWDT(10000, &twdt_config);
+  generator.setUseTasks(true);      // Разрешить сброс WDT
+  generator.setWDT(10000, &twdt_config);
 #else
-  generator->setUseTasks(false);     // Запретить сброс WDT
+  generator.setUseTasks(false);     // Запретить сброс WDT
 #endif
 
   // Настройка таймаутов
-  generator->setAttempts(30000, 15000, 5, 5);
+  generator.setAttempts(30000, 15000, 5, 5);
 
   // Подключаемся к WiFi
   Serial.print("\n📡 Подключение к WiFi");
@@ -167,13 +168,13 @@ void setup() {
     // Проверяем баланс
     Serial.println("\n💰 Запрос баланса...");
 
-    if (generator->getApiPollen(apiKey)) {
+    if (generator.getApiPollen(apiKey)) {
       Serial.print("✅ Баланс: ");
-      Serial.print(generator->getPollen());
+      Serial.print(generator.getPollen());
       Serial.println(" pollen");
     } else {
       Serial.print("❌ Ошибка баланса: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
     }
 
     // Массив промптов для генерации
@@ -191,7 +192,7 @@ void setup() {
       Serial.printf("\n--- Генерация %d/%d ---\n", i + 1, numPrompts);
 
       // Готовим промпт с переводом
-      if (!generator->data_prepare(
+      if (!generator.data_prepare(
             prompts[i],           // промпт
             "high quality",        // суффикс
             "detailed",            // модификатор
@@ -199,21 +200,21 @@ void setup() {
             true                   // translate = true (включить перевод)
           )) {
         Serial.print("❌ Ошибка подготовки промпта: ");
-        Serial.println(generator->getStateStatus(false));
+        Serial.println(generator.getStateStatus(false));
         continue;
       }
 
       Serial.print("📝 Промпт подготовлен");
 
       // Отправляем запрос на генерацию
-      if (generator->send_request()) {
+      if (generator.send_request()) {
         Serial.println(" - запрос отправлен");
         Serial.println("⏳ Ожидание генерации...");
 
         // Ждем завершения генерации (callback onRenderEnd сработает автоматически)
         uint32_t timeout = millis() + 30000; // 30 секунд таймаут
-        while (generator->isGenerating() && millis() < timeout) {
-          generator->tick(WiFi.status() == WL_CONNECTED);
+        while (generator.isGenerating() && millis() < timeout) {
+          generator.tick(WiFi.status() == WL_CONNECTED);
           delay(100);
 
 #if USE_WDT
@@ -223,12 +224,12 @@ void setup() {
 
         if (millis() >= timeout) {
           Serial.println("❌ Таймаут генерации");
-          generator->stop_receive();
+          generator.stop_receive();
         }
 
       } else {
         Serial.print("❌ Ошибка отправки запроса: ");
-        Serial.println(generator->getStateStatus(false));
+        Serial.println(generator.getStateStatus(false));
       }
 
       // Пауза между генерациями
@@ -244,9 +245,7 @@ void setup() {
 
 void loop() {
   // Тикаем генератор для обработки таймеров
-  if (generator) {
-    generator->tick(WiFi.status() == WL_CONNECTED);
-  }
+  generator.tick(WiFi.status() == WL_CONNECTED);
 
 #if USE_WDT
   esp_task_wdt_reset();
