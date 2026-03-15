@@ -30,7 +30,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("\n=== NEURGenerator 1.2.0 - Генерация изображений ===");
+  Serial.println("\n=== NEURGenerator 1.2.5 - Генерация изображений ===");
 
 #if USE_WDT
   // Инициализация WDT в проекте
