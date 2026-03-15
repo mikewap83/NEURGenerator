@@ -8,9 +8,23 @@ NEURGenerator::NEURGenerator() : _timer(5000) {
     _lastImageUrl = nullptr;
     _model = nullptr;
     _quality = nullptr;
+    
+    // Буферы для промптов
+    _suffix = nullptr;
+    _modifier = nullptr;
+    _denial = nullptr;
+    _preparedPrompt = nullptr;
+    _translatedText = nullptr;
+    _myMemoryEmail = nullptr;
+    
+    _jpegData = nullptr;
+    _jpegDataSize = 0;
+    _jpegDataCapacity = JPEG_BUFFER_SIZE;
+    
     _http = nullptr;
     
     _wifiConnected = false;
+    _translateEnabled = false;
     _lastHttpCode = 0;
     _width = 512;
     _height = 512;
@@ -42,6 +56,8 @@ void NEURGenerator::allocateBuffers() {
     size_t urlSize = URL_BUFFER_SIZE;
     size_t modelSize = 32;
     size_t qualitySize = 16;
+    size_t promptSize = PROMPT_BUFFER_SIZE;
+    size_t emailSize = 64;
     
     if (_flags.usePsram) {
         _apiKey = (char*)ps_malloc(keySize);
@@ -51,6 +67,16 @@ void NEURGenerator::allocateBuffers() {
         _lastImageUrl = (char*)ps_malloc(urlSize);
         _model = (char*)ps_malloc(modelSize);
         _quality = (char*)ps_malloc(qualitySize);
+        
+        // Буферы для промптов
+        _suffix = (char*)ps_malloc(promptSize);
+        _modifier = (char*)ps_malloc(promptSize);
+        _denial = (char*)ps_malloc(promptSize);
+        _preparedPrompt = (char*)ps_malloc(promptSize * 2);
+        _translatedText = (char*)ps_malloc(promptSize);
+        _myMemoryEmail = (char*)ps_malloc(emailSize);
+        
+        _jpegData = (uint8_t*)ps_malloc(_jpegDataCapacity);
     } else {
         _apiKey = (char*)malloc(keySize);
         _balance = (char*)malloc(balanceSize);
@@ -59,6 +85,16 @@ void NEURGenerator::allocateBuffers() {
         _lastImageUrl = (char*)malloc(urlSize);
         _model = (char*)malloc(modelSize);
         _quality = (char*)malloc(qualitySize);
+        
+        // Буферы для промптов
+        _suffix = (char*)malloc(promptSize);
+        _modifier = (char*)malloc(promptSize);
+        _denial = (char*)malloc(promptSize);
+        _preparedPrompt = (char*)malloc(promptSize * 2);
+        _translatedText = (char*)malloc(promptSize);
+        _myMemoryEmail = (char*)malloc(emailSize);
+        
+        _jpegData = (uint8_t*)malloc(_jpegDataCapacity);
     }
     
     // Инициализируем пустыми строками
@@ -72,49 +108,306 @@ void NEURGenerator::allocateBuffers() {
     if (_lastImageUrl) _lastImageUrl[0] = '\0';
     if (_model) _model[0] = '\0';
     if (_quality) _quality[0] = '\0';
+    
+    // Буферы для промптов
+    if (_suffix) _suffix[0] = '\0';
+    if (_modifier) _modifier[0] = '\0';
+    if (_denial) _denial[0] = '\0';
+    if (_preparedPrompt) _preparedPrompt[0] = '\0';
+    if (_translatedText) _translatedText[0] = '\0';
+    if (_myMemoryEmail) _myMemoryEmail[0] = '\0';
+    
+    // Очищаем JPEG буфер
+    clearJpegBuffer();
 }
 
-void NEURGenerator::connectWiFi(const char* ssid, const char* password) {
-    Serial.print("Подключение к WiFi");
-    WiFi.begin(ssid, password);
+void NEURGenerator::clearJpegBuffer() {
+    if (_jpegData) {
+        memset(_jpegData, 0, _jpegDataCapacity);
+    }
+    _jpegDataSize = 0;
+}
+
+void NEURGenerator::resetWDT() {
+    esp_task_wdt_reset();
+}
+
+// ========== МЕТОДЫ ДЛЯ ПРОМПТОВ ==========
+
+void NEURGenerator::setSuffix(const char* suffix) {
+    if (_suffix && suffix) {
+        strncpy(_suffix, suffix, PROMPT_BUFFER_SIZE - 1);
+        _suffix[PROMPT_BUFFER_SIZE - 1] = '\0';
+    }
+}
+
+void NEURGenerator::setModifier(const char* modifier) {
+    if (_modifier && modifier) {
+        strncpy(_modifier, modifier, PROMPT_BUFFER_SIZE - 1);
+        _modifier[PROMPT_BUFFER_SIZE - 1] = '\0';
+    }
+}
+
+void NEURGenerator::setDenial(const char* denial) {
+    if (_denial && denial) {
+        strncpy(_denial, denial, PROMPT_BUFFER_SIZE - 1);
+        _denial[PROMPT_BUFFER_SIZE - 1] = '\0';
+    }
+}
+
+void NEURGenerator::setTranslate(bool enable) {
+    _translateEnabled = enable;
+}
+
+void NEURGenerator::setMyMemoryEmail(const char* email) {
+    if (_myMemoryEmail && email) {
+        strncpy(_myMemoryEmail, email, 63);
+        _myMemoryEmail[63] = '\0';
+    }
+}
+
+bool NEURGenerator::isRussianText(const char* text) {
+    if (text == nullptr || text[0] == '\0') {
+        return false;
+    }
+    
+    for (int i = 0; text[i] != '\0'; i++) {
+        unsigned char c = text[i];
+        // Русские буквы в UTF-8 (приблизительно)
+        if (c >= 0xC0 && c <= 0xFF) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NEURGenerator::isRussian(const char* text) {
+    return isRussianText(text);
+}
+
+bool NEURGenerator::isEnglishText(const char* text) {
+    if (!text || strlen(text) == 0) {
+        return false;
+    }
+    
+    size_t len = strlen(text);
+    if (len < 2 || len > 1000) {
+        return false;
+    }
+    
+    int letterCount = 0;
+    int validCharCount = 0;
+    
+    for (size_t i = 0; i < len; i++) {
+        char c = text[i];
+        
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            letterCount++;
+            validCharCount++;
+        }
+        else if (c >= '0' && c <= '9') {
+            validCharCount++;
+        }
+        else if (c == ' ' || c == ',' || c == '.' || c == '!' || c == '?' ||
+                 c == '-' || c == '_' || c == '(' || c == ')' || c == ':' ||
+                 c == ';' || c == '\'' || c == '"') {
+            validCharCount++;
+        }
+    }
+    
+    float letterRatio = (float)letterCount / len;
+    float validRatio = (float)validCharCount / len;
+    
+    return (letterRatio >= 0.3f && validRatio >= 0.8f);
+}
+
+bool NEURGenerator::requestTranslation(const char* text) {
+    if (!_wifiConnected) {
+        if (_lastError) snprintf(_lastError, 128, "Нет подключения к WiFi");
+        return false;
+    }
+    
+    cleanupHttp();
+    
+    // Кодируем текст для URL
+    char encodedText[1024];
+    urlEncode(text, encodedText, sizeof(encodedText));
+    
+    // Формируем URL
+    char url[2048];
+    if (_myMemoryEmail && _myMemoryEmail[0] != '\0') {
+        snprintf(url, sizeof(url), "/get?q=%s&langpair=ru|en&de=%s",
+                 encodedText, _myMemoryEmail);
+    } else {
+        snprintf(url, sizeof(url), "/get?q=%s&langpair=ru|en", encodedText);
+    }
+    
+    Serial.print("🔗 URL перевода: ");
+    Serial.println(url);
+    
+    // Создаем HTTPS клиент
+    _http = new ghttp::Client(TRANS_HOST, TRANS_PORT);
+    if (!_http) {
+        if (_lastError) snprintf(_lastError, 128, "Ошибка создания HTTP клиента");
+        return false;
+    }
+    
+    _http->setInsecure();
+    _http->setTimeout(10000);
+    
+    if (!_http->connect()) {
+        if (_lastError) snprintf(_lastError, 128, "Ошибка подключения к серверу перевода");
+        cleanupHttp();
+        return false;
+    }
+    
+    // Формируем заголовки
+    ghttp::Client::Headers headers;
+    headers.add("Accept", "*/*");
+    headers.add("User-Agent", "NEURGenerator/1.2.0");
+    
+    if (!_http->request(url, "GET", headers)) {
+        if (_lastError) snprintf(_lastError, 128, "Ошибка отправки запроса перевода");
+        cleanupHttp();
+        return false;
+    }
+    
+    ghttp::Client::Response resp = _http->getResponse();
+    if (!resp) {
+        if (_lastError) snprintf(_lastError, 128, "Ошибка получения ответа перевода");
+        cleanupHttp();
+        return false;
+    }
+    
+    int httpCode = resp.code();
+    if (httpCode != 200) {
+        if (_lastError) snprintf(_lastError, 128, "HTTP ошибка перевода: %d", httpCode);
+        cleanupHttp();
+        return false;
+    }
+    
+    // Читаем ответ
+    size_t bytesRead = resp.body().readBytes(_jsonBuffer, JSON_BUFFER_SIZE - 1);
+    _jsonBuffer[bytesRead] = '\0';
+    
+    // Парсим JSON
+    gson::Parser json;
+    if (!json.parse(_jsonBuffer)) {
+        if (_lastError) snprintf(_lastError, 128, "Ошибка парсинга JSON перевода");
+        cleanupHttp();
+        return false;
+    }
+    
+    // Извлекаем перевод
+    const char* translated = json["responseData"]["translatedText"].c_str();
+    if (translated && translated[0] != '\0' && isEnglishText(translated)) {
+        if (_translatedText) {
+            strncpy(_translatedText, translated, PROMPT_BUFFER_SIZE - 1);
+            _translatedText[PROMPT_BUFFER_SIZE - 1] = '\0';
+        }
+        cleanupHttp();
+        return true;
+    }
+    
+    if (_lastError) snprintf(_lastError, 128, "Не удалось извлечь перевод");
+    cleanupHttp();
+    return false;
+}
+
+bool NEURGenerator::translateText(const char* russian_text) {
+    _flags.hasError = false;
+    
+    if (!russian_text || russian_text[0] == '\0') {
+        if (_lastError) snprintf(_lastError, 128, "Текст для перевода пуст");
+        return false;
+    }
+    
+    if (!isRussianText(russian_text)) {
+        // Если текст не русский, просто копируем его
+        if (_translatedText) {
+            strncpy(_translatedText, russian_text, PROMPT_BUFFER_SIZE - 1);
+            _translatedText[PROMPT_BUFFER_SIZE - 1] = '\0';
+        }
+        return true;
+    }
+    
+    _timer.reset();
     
     int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
+    const int maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+        if (requestTranslation(russian_text)) {
+            Serial.print("✅ Перевод: ");
+            Serial.println(_translatedText);
+            return true;
+        }
+        
         attempts++;
+        if (attempts < maxAttempts) {
+            delay(2000);
+        }
     }
     
-    if (WiFi.status() == WL_CONNECTED) {
-        _wifiConnected = true;
-        Serial.println("\n✅ WiFi подключен");
-        Serial.print("IP адрес: ");
-        Serial.println(WiFi.localIP());
-        
-        // Пингуем хост для проверки соединения
-        IPAddress hostIp;
-        if (WiFi.hostByName(HOST, hostIp)) {
-            if (Ping.ping(hostIp, 1)) {
-                Serial.println("✅ Хост доступен");
-            } else {
-                Serial.println("⚠️ Хост не отвечает на ping");
-            }
+    _flags.hasError = true;
+    return false;
+}
+
+const char* NEURGenerator::getTranslatedText() {
+    return _translatedText ? _translatedText : "";
+}
+
+bool NEURGenerator::preparePrompt(const char* prompt) {
+    if (!prompt || prompt[0] == '\0') {
+        if (_lastError) snprintf(_lastError, 128, "Промпт не может быть пустым");
+        return false;
+    }
+    
+    if (!_preparedPrompt) return false;
+    
+    _preparedPrompt[0] = '\0';
+    
+    // 1. Основной промпт (с переводом если нужно)
+    const char* mainPrompt = prompt;
+    
+    if (_translateEnabled && isRussianText(prompt)) {
+        if (translateText(prompt)) {
+            mainPrompt = _translatedText;
+            Serial.println("✅ Использован переведенный промпт");
+        } else {
+            Serial.println("⚠️ Использован оригинальный промпт (перевод не удался)");
         }
-    } else {
-        _wifiConnected = false;
-        if (_lastError) snprintf(_lastError, 128, "Ошибка подключения к WiFi");
-        Serial.println("\n❌ Ошибка WiFi");
     }
+    
+    strcpy(_preparedPrompt, mainPrompt);
+    
+    // 2. Добавляем суффикс
+    if (_suffix && _suffix[0] != '\0') {
+        if (strlen(_preparedPrompt) > 0) strcat(_preparedPrompt, ", ");
+        strcat(_preparedPrompt, _suffix);
+    }
+    
+    // 3. Добавляем модификатор
+    if (_modifier && _modifier[0] != '\0') {
+        if (strlen(_preparedPrompt) > 0) strcat(_preparedPrompt, ", ");
+        strcat(_preparedPrompt, _modifier);
+    }
+    
+    Serial.print("📝 Подготовленный промпт: ");
+    Serial.println(_preparedPrompt);
+    
+    return true;
 }
 
-void NEURGenerator::setApiKey(const char* key) {
-    if (_apiKey) {
-        snprintf(_apiKey, 128, "Bearer %s", key);
-        Serial.println("✅ API ключ установлен");
-    }
+const char* NEURGenerator::getPreparedPrompt() {
+    return _preparedPrompt ? _preparedPrompt : "";
 }
 
-// ========== НОВЫЕ МЕТОДЫ ==========
+const char* NEURGenerator::getDenial() {
+    return _denial ? _denial : "";
+}
+
+// ========== МЕТОДЫ ДЛЯ ГЕНЕРАЦИИ ==========
 
 void NEURGenerator::setModel(const char* model) {
     if (_model && model) {
@@ -185,6 +478,7 @@ bool NEURGenerator::requestGeneration(const char* prompt, const char* negativePr
     }
     
     cleanupHttp();
+    clearJpegBuffer();
     
     // Кодируем промпт для URL
     char encodedPrompt[1024];
@@ -195,6 +489,12 @@ bool NEURGenerator::requestGeneration(const char* prompt, const char* negativePr
     snprintf(url, sizeof(url), 
              "/image/%s?model=%s&width=%d&height=%d&quality=%s&nologo=true",
              encodedPrompt, _model, _width, _height, _quality);
+    
+    // Добавляем private если есть ключ
+    if (_apiKey && _apiKey[0] != '\0') {
+        size_t len = strlen(url);
+        snprintf(url + len, sizeof(url) - len, "&private=true");
+    }
     
     // Добавляем negative prompt если есть
     if (negativePrompt && negativePrompt[0] != '\0') {
@@ -217,7 +517,7 @@ bool NEURGenerator::requestGeneration(const char* prompt, const char* negativePr
     
     // Настраиваем SSL
     _http->setInsecure();
-    _http->setTimeout(30000); // Увеличиваем таймаут для генерации
+    _http->setTimeout(30000);
     
     if (!_http->connect()) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка подключения к серверу");
@@ -229,18 +529,16 @@ bool NEURGenerator::requestGeneration(const char* prompt, const char* negativePr
     ghttp::Client::Headers headers;
     headers.add("Authorization", _apiKey);
     headers.add("Accept", "image/jpeg");
-    headers.add("User-Agent", "NEURGenerator/1.1.0");
+    headers.add("User-Agent", "NEURGenerator/1.2.0");
     
     Serial.println("📡 Отправка запроса на генерацию...");
     
-    // Отправляем GET запрос
     if (!_http->request(url, "GET", headers)) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка отправки запроса");
         cleanupHttp();
         return false;
     }
     
-    // Получаем ответ
     ghttp::Client::Response resp = _http->getResponse();
     if (!resp) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка получения ответа");
@@ -266,46 +564,52 @@ bool NEURGenerator::requestGeneration(const char* prompt, const char* negativePr
         return false;
     }
     
+    // Читаем данные изображения
+    size_t totalBytesRead = 0;
+    uint8_t buffer[512];
+    
+    while (resp.body().available() > 0 && totalBytesRead < _jpegDataCapacity) {
+        size_t toRead = min(sizeof(buffer), _jpegDataCapacity - totalBytesRead);
+        size_t bytesRead = resp.body().readBytes((char*)buffer, toRead);
+        
+        if (bytesRead == 0) break;
+        
+        if (_jpegData) {
+            memcpy(_jpegData + totalBytesRead, buffer, bytesRead);
+        }
+        totalBytesRead += bytesRead;
+        
+        resetWDT(); // Сбрасываем WDT во время загрузки
+    }
+    
+    _jpegDataSize = totalBytesRead;
+    
     // Сохраняем URL изображения
     if (_lastImageUrl) {
         snprintf(_lastImageUrl, URL_BUFFER_SIZE - 1, 
                  "https://%s%s", HOST, url);
     }
     
-    Serial.println("✅ Запрос на генерацию успешно отправлен");
-    Serial.print("🖼️ URL изображения: ");
-    Serial.println(_lastImageUrl);
+    Serial.printf("✅ Получено %d байт JPEG\n", _jpegDataSize);
     
     cleanupHttp();
-    return true;
+    return _jpegDataSize > 0;
 }
 
-bool NEURGenerator::generateImage(const char* prompt) {
-    _flags.hasError = false;
-    
-    // Используем таймер для повторных попыток
-    _timer.reset();
-    
-    int attempts = 0;
-    const int maxAttempts = 3;
-    
-    while (attempts < maxAttempts) {
-        if (requestGeneration(prompt)) {
-            return true;
-        }
-        
-        attempts++;
-        if (attempts < maxAttempts) {
-            Serial.printf("Повторная попытка %d/%d через 2 сек...\n", attempts + 1, maxAttempts);
-            delay(2000);
-        }
+bool NEURGenerator::generate() {
+    if (!_preparedPrompt || _preparedPrompt[0] == '\0') {
+        if (_lastError) snprintf(_lastError, 128, "Промпт не подготовлен");
+        return false;
     }
     
-    _flags.hasError = true;
-    return false;
+    return generate(_preparedPrompt, _denial);
 }
 
-bool NEURGenerator::generateImage(const char* prompt, const char* negativePrompt) {
+bool NEURGenerator::generate(const char* prompt) {
+    return generate(prompt, _denial);
+}
+
+bool NEURGenerator::generate(const char* prompt, const char* negativePrompt) {
     _flags.hasError = false;
     
     _timer.reset();
@@ -329,13 +633,29 @@ bool NEURGenerator::generateImage(const char* prompt, const char* negativePrompt
     return false;
 }
 
+// ========== МЕТОДЫ ДЛЯ ПОЛУЧЕНИЯ ДАННЫХ ==========
+
 const char* NEURGenerator::getLastImageUrl() {
     return _lastImageUrl ? _lastImageUrl : "";
 }
 
-int NEURGenerator::getLastHttpCode() {
-    return _lastHttpCode;
+uint8_t* NEURGenerator::getImageData() {
+    return _jpegData;
 }
+
+size_t NEURGenerator::getImageDataSize() {
+    return _jpegDataSize;
+}
+
+bool NEURGenerator::hasImageData() {
+    return _jpegData != nullptr && _jpegDataSize > 0;
+}
+
+void NEURGenerator::clearImageData() {
+    clearJpegBuffer();
+}
+
+// ========== МЕТОДЫ ДЛЯ БАЛАНСА ==========
 
 bool NEURGenerator::requestBalance() {
     if (!_wifiConnected) {
@@ -350,14 +670,12 @@ bool NEURGenerator::requestBalance() {
     
     cleanupHttp();
     
-    // Создаем HTTPS клиент
     _http = new ghttp::Client(HOST, PORT);
     if (!_http) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка создания HTTP клиента");
         return false;
     }
     
-    // Настраиваем SSL (insecure для теста)
     _http->setInsecure();
     _http->setTimeout(10000);
     
@@ -367,22 +685,19 @@ bool NEURGenerator::requestBalance() {
         return false;
     }
     
-    // Формируем заголовки
     ghttp::Client::Headers headers;
     headers.add("Authorization", _apiKey);
     headers.add("Accept", "application/json");
-    headers.add("User-Agent", "NEURGenerator/1.0.1");
+    headers.add("User-Agent", "NEURGenerator/1.2.0");
     
     Serial.println("📡 Запрос баланса...");
     
-    // Отправляем GET запрос
     if (!_http->request("/account/balance", "GET", headers)) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка отправки запроса");
         cleanupHttp();
         return false;
     }
     
-    // Получаем ответ
     ghttp::Client::Response resp = _http->getResponse();
     if (!resp) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка получения ответа");
@@ -399,14 +714,12 @@ bool NEURGenerator::requestBalance() {
         return false;
     }
     
-    // Читаем тело ответа
     size_t bytesRead = resp.body().readBytes(_jsonBuffer, JSON_BUFFER_SIZE - 1);
     _jsonBuffer[bytesRead] = '\0';
     
     Serial.print("Ответ: ");
     Serial.println(_jsonBuffer);
     
-    // Парсим JSON с помощью GSON
     gson::Parser json;
     if (!json.parse(_jsonBuffer)) {
         if (_lastError) snprintf(_lastError, 128, "Ошибка парсинга JSON");
@@ -414,7 +727,6 @@ bool NEURGenerator::requestBalance() {
         return false;
     }
     
-    // Извлекаем баланс
     const char* balance = json["balance"].c_str();
     if (balance && balance[0] != '\0') {
         if (_balance) {
@@ -433,7 +745,6 @@ bool NEURGenerator::requestBalance() {
 bool NEURGenerator::checkBalance() {
     _flags.hasError = false;
     
-    // Используем таймер для повторных попыток
     _timer.reset();
     
     int attempts = 0;
@@ -462,12 +773,58 @@ const char* NEURGenerator::getBalance() {
     return _balance ? _balance : "0";
 }
 
+// ========== СЛУЖЕБНЫЕ МЕТОДЫ ==========
+
+void NEURGenerator::connectWiFi(const char* ssid, const char* password) {
+    Serial.print("Подключение к WiFi");
+    WiFi.begin(ssid, password);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+        resetWDT();
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        _wifiConnected = true;
+        Serial.println("\n✅ WiFi подключен");
+        Serial.print("IP адрес: ");
+        Serial.println(WiFi.localIP());
+        
+        IPAddress hostIp;
+        if (WiFi.hostByName(HOST, hostIp)) {
+            if (Ping.ping(hostIp, 1)) {
+                Serial.println("✅ Хост доступен");
+            } else {
+                Serial.println("⚠️ Хост не отвечает на ping");
+            }
+        }
+    } else {
+        _wifiConnected = false;
+        if (_lastError) snprintf(_lastError, 128, "Ошибка подключения к WiFi");
+        Serial.println("\n❌ Ошибка WiFi");
+    }
+}
+
+void NEURGenerator::setApiKey(const char* key) {
+    if (_apiKey) {
+        snprintf(_apiKey, 128, "Bearer %s", key);
+        Serial.println("✅ API ключ установлен");
+    }
+}
+
 bool NEURGenerator::isWiFiConnected() {
     return _wifiConnected;
 }
 
 const char* NEURGenerator::getLastError() {
     return _lastError ? _lastError : "";
+}
+
+int NEURGenerator::getLastHttpCode() {
+    return _lastHttpCode;
 }
 
 void NEURGenerator::cleanupHttp() {
@@ -479,6 +836,5 @@ void NEURGenerator::cleanupHttp() {
 }
 
 void NEURGenerator::tick() {
-    // Для будущих обновлений с таймерами
     _timer.tick();
 }
