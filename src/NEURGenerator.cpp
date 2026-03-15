@@ -253,7 +253,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
 
     if (flags.useheads) {
       headers.add("Accept"         , "*/*");
-      headers.add("User-Agent"     , useragent);
+      headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
       headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
       headers.add("Cache-Control"  , "no-cache");
       headers.add("Connection"     , "keep-alive");
@@ -268,7 +268,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
 
     if (flags.useheads) {
       headers.add("Accept"         , "application/json");
-      headers.add("User-Agent"     , useragent);
+      headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
       headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
       headers.add("Cache-Control"  , "no-cache");
       headers.add("Connection"     , "keep-alive");
@@ -277,7 +277,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
   else if (states == States::TRANSLATE) {
     if (flags.useheads) {
       headers.add("Accept"         , "*/*");
-      headers.add("User-Agent"     , useragent);
+      headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
       headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
       headers.add("Cache-Control"  , "no-cache");
       headers.add("Connection"     , "keep-alive");
@@ -458,7 +458,6 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
         JsonBuffer[bytesRead] = '\0';
 
         gson::Parser json;
-
         if (json.parse(JsonBuffer)) {
           success = ParserPollen(json);
         } else {
