@@ -21,95 +21,130 @@
 - ✅ Автоматические повторы при ошибках
 - ✅ Проверка баланса Pollen
 
+### Быстрый старт
 
-### Простой пример генерации
 ```cpp
 #include <NEURGenerator.h>
 
-// Настройка параметров
-generator.setModel("flux");
-generator.setSize(512, 512);
-generator.setQuality("medium");
+// Настройки WiFi
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
 
-// Генерация
-generator.generateImage("a beautiful cat in space");
+// API ключи
+const char* apiKey = "YOUR_SK_API_KEY";
+const char* privateKey = "YOUR_PK_API_KEY";
+const char* myMemoryEmail = "YOUR_EMAIL";
 
-// Получение URL
-String url = generator.getLastImageUrl();
+// Создаем объект генератора
+NEURGenerator generator;
+
+void setup() {
+    Serial.begin(115200);
+    
+    // Устанавливаем ключи
+    generator.setKeySecret(apiKey, privateKey);
+    generator.setMyMemmory(myMemoryEmail);
+    
+    // Подключаемся к WiFi
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) delay(500);
+    
+    // Проверяем баланс
+    if (generator.getApiPollen(apiKey)) {
+        Serial.printf("Баланс: %s pollen\n", generator.getPollen());
+    }
+}
 ```
 
-### Пример с callback'ами
+### Пример генерации с callback'ами
 
 ```cpp
 #include <NEURGenerator.h>
 
-// Callback при успешной генерации
+NEURGenerator generator;
+
 void onRenderEnd() {
-    uint8_t* data = generator->getImageData();
-    size_t size = generator->getImageDataSize();
+    // Данные готовы
+    uint8_t* data = generator.getImageData();
+    size_t size = generator.getImageDataSize();
     Serial.printf("Получено %d байт JPEG\n", size);
 }
 
-NEURGenerator* generator;
-
 void setup() {
-    generator = new NEURGenerator("sk_key", "pk_key", "email");
-    generator->onRenderEnd(onRenderEnd);
+    Serial.begin(115200);
     
-    // Подготовка и генерация
-    generator->data_prepare("красивый закат", "high quality", "", "", true);
-    generator->send_request();
+    // Настройка
+    generator.setKeySecret("sk_key", "pk_key", "email");
+    generator.onRenderEnd(onRenderEnd);
+    
+    // Подготовка промпта
+    generator.data_prepare(
+        "красивый закат над морем",  // промпт
+        "high quality",               // суффикс
+        "digital art",                // модификатор
+        "ugly, blurry",               // negative prompt
+        true                          // перевод
+    );
+    
+    // Отправка запроса
+    generator.send_request();
+}
+
+void loop() {
+    generator.tick(WiFi.status() == WL_CONNECTED);
 }
 ```
 
-### История версий
-## Версия 1.2.5
-✨ Добавлена полная система callback'ов
+## Примеры использования
 
-✨ Улучшена работа с PSRAM
+| Пример | Описание | Ссылка |
+|--------|----------|--------|
+| **Basic** | Базовая проверка подключения и баланса | [`examples/Basic/Basic.ino`](examples/Basic/Basic.ino) |
+| **GenerateImage** | Генерация изображения по промпту | [`examples/GenerateImage/GenerateImage.ino`](examples/GenerateImage/GenerateImage.ino) |
+| **SD_Save** | Сохранение JPEG на SD карту | [`examples/SD_Save/SD_Save.ino`](examples/SD_Save/SD_Save.ino) |
+| **TFT_Display** | Вывод изображения на TFT дисплей | [`examples/TFT_Display/TFT_Display.ino`](examples/TFT_Display/TFT_Display.ino) |
 
-✨ Оптимизация декодирования JPEG
+---
 
-✨ Исправлены ошибки WDT
+## История версий
 
-## Версия 1.2.0
-✨ Подготовка промптов (суффиксы и модификаторы)
+### Версия 1.2.5
+- ✨ Добавлена полная система callback'ов
+- ✨ Улучшена работа с PSRAM
+- ✨ Оптимизация чтения JPEG
+- ✨ Исправлены ошибки WDT
 
-✨ Автоматический перевод через MyMemory API
+### Версия 1.2.0
+- ✨ Подготовка промптов (суффиксы и модификаторы)
+- ✨ Автоматический перевод через MyMemory API
+- ✨ Хранение JPEG данных в PSRAM
+- ✨ Методы для получения сырых данных
 
-✨ Хранение JPEG данных в PSRAM
+### Версия 1.1.0
+- ✨ Генерация изображений
+- ✨ Поддержка разных моделей
+- ✨ Настройка размера и качества
+- ✨ Поддержка negative prompts
+- ✨ Автоматические повторы при ошибках
 
-✨ Методы для получения сырых данных
+### Версия 1.0.1
+- 🔧 Переход на GyverHTTP и GSON
+- 🔧 Поддержка PSRAM
+- 🔧 Добавлена проверка через ESP32Ping
 
-## Версия 1.1.0
-✨ Генерация изображений
+### Версия 1.0.0
+- 🎉 Базовая инициализация
+- 🎉 Проверка баланса Pollen
+- 🎉 Подключение к WiFi
 
-✨ Поддержка разных моделей
-
-✨ Настройка размера и качества
-
-✨ Поддержка negative prompts
-
-✨ Автоматические повторы при ошибках
-
-## Версия 1.0.1
-🔧 Переход на GyverHTTP и GSON
-
-🔧 Поддержка PSRAM
-
-🔧 Добавлена проверка через ESP32Ping
-
-## Версия 1.0.0
-🎉 Базовая инициализация
-
-🎉 Проверка баланса Pollen
-
-🎉 Подключение к WiFi
+---
 
 ## Зависимости
 
-- [GyverHTTP](https://github.com/GyverLibs/GyverHTTP) - HTTP клиент
-- [GSON](https://github.com/GyverLibs/GSON) - Парсер JSON
-- [GTimer](https://github.com/GyverLibs/GTimer) - Таймеры
-- [ESP32Ping](https://github.com/marian-craciunescu/ESP32Ping) - Проверка доступности хоста
-- [JPEGDEC](https://github.com/bitbank2/JPEGDEC) - Декодирование JPEG
+| Библиотека | Описание | Ссылка |
+|------------|----------|--------|
+| **GyverHTTP** | HTTP клиент | [GitHub](https://github.com/GyverLibs/GyverHTTP) |
+| **GSON** | Парсер JSON | [GitHub](https://github.com/GyverLibs/GSON) |
+| **GTimer** | Таймеры | [GitHub](https://github.com/GyverLibs/GTimer) |
+| **ESP32Ping** | Проверка доступности хоста | [GitHub](https://github.com/marian-craciunescu/ESP32Ping) |
+| **JPEGDEC** | Декодирование JPEG | [GitHub](https://github.com/bitbank2/JPEGDEC) |
