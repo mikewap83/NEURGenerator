@@ -24,7 +24,7 @@ esp_task_wdt_config_t twdt_config = {
 #endif
 
 // Создаем объект генератора
-NEURGenerator* generator = nullptr;
+NEURGenerator generator;
 
 void setup() {
   Serial.begin(115200);
@@ -41,25 +41,26 @@ void setup() {
   Serial.println("✅ WDT инициализирован");
 #endif
 
-  // Создаем объект генератора с ключами
-  generator = new NEURGenerator(apiKey, privateKey, myMemoryEmail);
+  // Устанавливаем ключи (ОТДЕЛЬНО, как и должно быть)
+  generator.setKeySecret(apiKey, privateKey);
+  generator.setMyMemmory(myMemoryEmail);
 
   // Настройка параметров (опционально)
-  generator->setUseHeads(true);      // Использовать заголовки
-  generator->setUsePings(true);      // Использовать ping
-  generator->setUseLoges(true);      // Выводить логи
+  generator.setUseHeads(true);      // Использовать заголовки
+  generator.setUsePings(true);      // Использовать ping
+  generator.setUseLoges(true);      // Выводить логи
 
 #if USE_WDT
-  generator->setUseTasks(true);      // Разрешить библиотеке вызывать esp_task_wdt_reset()
-  generator->setWDT(10000, &twdt_config); // Передаем конфигурацию WDT
+  generator.setUseTasks(true);      // Разрешить библиотеке вызывать esp_task_wdt_reset()
+  generator.setWDT(10000, &twdt_config); // Передаем конфигурацию WDT
   Serial.println("✅ WDT передан в библиотеку");
 #else
-  generator->setUseTasks(false);     // Запретить библиотеке вызывать esp_task_wdt_reset()
+  generator.setUseTasks(false);     // Запретить библиотеке вызывать esp_task_wdt_reset()
   Serial.println("ℹ️ WDT не используется");
 #endif
 
   // Настройка таймаутов (опционально)
-  generator->setAttempts(30000, 15000, 5, 5);
+  generator.setAttempts(30000, 15000, 5, 5);
 
   // Подключаемся к WiFi
   Serial.print("\n📡 Подключение к WiFi");
@@ -84,13 +85,13 @@ void setup() {
     // Проверяем баланс через API
     Serial.println("\n💰 Запрос баланса...");
 
-    if (generator->getApiPollen(apiKey)) {
+    if (generator.getApiPollen(apiKey)) {
       Serial.print("✅ Баланс: ");
-      Serial.print(generator->getPollen());
+      Serial.print(generator.getPollen());
       Serial.println(" pollen");
     } else {
       Serial.print("❌ Ошибка получения баланса: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
     }
 
   } else {
@@ -100,9 +101,7 @@ void setup() {
 
 void loop() {
   // Тикаем генератор для обработки таймеров
-  if (generator) {
-    generator->tick(WiFi.status() == WL_CONNECTED);
-  }
+  generator.tick(WiFi.status() == WL_CONNECTED);
 
 #if USE_WDT
   esp_task_wdt_reset(); // Сбрасываем WDT в основном цикле
