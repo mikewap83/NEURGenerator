@@ -26,7 +26,7 @@ esp_task_wdt_config_t twdt_config = {
 #endif
 
 // Создаем объект генератора
-NEURGenerator* generator = nullptr;
+NEURGenerator generator;
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -51,8 +51,8 @@ void onRenderEnd() {
   Serial.println("✅ Генерация завершена!");
 
   // Получаем данные изображения
-  uint8_t* jpegData = generator->getImageData();
-  size_t jpegSize = generator->getImageDataSize();
+  uint8_t* jpegData = generator.getImageData();
+  size_t jpegSize = generator.getImageDataSize();
 
   if (jpegData && jpegSize > 0) {
     Serial.printf("📊 Размер JPEG: %d байт\n", jpegSize);
@@ -75,15 +75,15 @@ void onRenderEnd() {
       tft.drawString("JPEG Error", 10, 10);
     }
 
-    // Очищаем буфер
-    generator->clearImageData();
+    // Очищаем буфер но можно и не очищать потом может пригодится
+    //generator.clearImageData();
   }
 }
 
 // Callback при ошибке генерации
 void onRenderErr() {
   Serial.print("❌ Ошибка генерации: ");
-  Serial.println(generator->getStateStatus(true));
+  Serial.println(generator.getStateStatus(true));
   tft.fillScreen(TFT_RED);
   tft.drawString("Gen Error", 10, 10);
 }
@@ -109,7 +109,8 @@ void setup() {
 
   // Инициализация TFT
   tft.init();
-  tft.setRotation(1);
+  tft.setRotation(3);
+  tft.setSwapBytes(1);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextSize(2);
@@ -123,30 +124,31 @@ void setup() {
   Serial.println("✅ WDT инициализирован");
 #endif
 
-  // Создаем объект генератора с ключами
-  generator = new NEURGenerator(apiKey, privateKey, myMemoryEmail);
+  // Устанавливаем ключи
+  generator.setKeySecret(apiKey, privateKey);
+  generator.setMyMemmory(myMemoryEmail);
 
   // Устанавливаем callback'и
-  generator->onRenderRun(onRenderRun);
-  generator->onRenderEnd(onRenderEnd);
-  generator->onRenderErr(onRenderErr);
-  generator->onRenderUnd(onRenderUnd);
-  generator->onRenderEng(onRenderEng);
+  generator.onRenderRun(onRenderRun);
+  generator.onRenderEnd(onRenderEnd);
+  generator.onRenderErr(onRenderErr);
+  generator.onRenderUnd(onRenderUnd);
+  generator.onRenderEng(onRenderEng);
 
   // Настройка параметров
-  generator->setUseHeads(true);      // Использовать заголовки
-  generator->setUsePings(true);      // Использовать ping
-  generator->setUseLoges(true);      // Выводить логи
+  generator.setUseHeads(true);      // Использовать заголовки
+  generator.setUsePings(true);      // Использовать ping
+  generator.setUseLoges(true);      // Выводить логи
 
 #if USE_WDT
-  generator->setUseTasks(true);      // Разрешить сброс WDT
-  generator->setWDT(10000, &twdt_config);
+  generator.setUseTasks(true);      // Разрешить сброс WDT
+  generator.setWDT(10000, &twdt_config);
 #else
-  generator->setUseTasks(false);     // Запретить сброс WDT
+  generator.setUseTasks(false);     // Запретить сброс WDT
 #endif
 
   // Настройка таймаутов
-  generator->setAttempts(30000, 15000, 5, 5);
+  generator.setAttempts(30000, 15000, 5, 5);
 
   // Подключаемся к WiFi
   Serial.print("\n📡 Подключение к WiFi");
@@ -176,18 +178,18 @@ void setup() {
     Serial.println("\n💰 Запрос баланса...");
     tft.drawString("Balance...", 10, 50);
 
-    if (generator->getApiPollen(apiKey)) {
+    if (generator.getApiPollen(apiKey)) {
       Serial.print("✅ Баланс: ");
-      Serial.print(generator->getPollen());
+      Serial.print(generator.getPollen());
       Serial.println(" pollen");
 
       tft.fillScreen(TFT_BLACK);
       tft.drawString("Balance OK", 10, 10);
-      tft.drawString(generator->getPollen(), 10, 30);
+      tft.drawString(generator.getPollen(), 10, 30);
       tft.drawString("pollen", 10, 50);
     } else {
       Serial.print("❌ Ошибка баланса: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
       tft.fillScreen(TFT_RED);
       tft.drawString("Balance Error", 10, 10);
       return;
@@ -198,7 +200,7 @@ void setup() {
     tft.fillScreen(TFT_BLACK);
     tft.drawString("Preparing...", 10, 10);
 
-    if (generator->data_prepare(
+    if (generator.data_prepare(
           "красивый закат над морем, пальмы, песок",  // промпт
           "high quality, detailed",                    // суффикс
           "digital art",                                // модификатор
@@ -212,18 +214,18 @@ void setup() {
       Serial.println("\n📤 Отправка запроса...");
       tft.drawString("Sending...", 10, 50);
 
-      if (generator->send_request()) {
+      if (generator.send_request()) {
         Serial.println("✅ Запрос отправлен");
         // Дальше работают callback'и
       } else {
         Serial.print("❌ Ошибка отправки: ");
-        Serial.println(generator->getStateStatus(false));
+        Serial.println(generator.getStateStatus(false));
         tft.fillScreen(TFT_RED);
         tft.drawString("Send Error", 10, 10);
       }
     } else {
       Serial.print("❌ Ошибка подготовки промпта: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
       tft.fillScreen(TFT_RED);
       tft.drawString("Prepare Error", 10, 10);
     }
@@ -237,9 +239,7 @@ void setup() {
 
 void loop() {
   // Тикаем генератор для обработки таймеров
-  if (generator) {
-    generator->tick(WiFi.status() == WL_CONNECTED);
-  }
+  generator.tick(WiFi.status() == WL_CONNECTED);
 
 #if USE_WDT
   esp_task_wdt_reset();
