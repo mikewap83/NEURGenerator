@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <vector>
 
+#define GSON_NO_LIMITS
 #include <GSON.h>
 #include <GyverHTTP.h>
 #include <GTimer.h>
@@ -26,7 +27,6 @@ constexpr uint16_t WDT_SURPLUS   = 20000;
 constexpr uint16_t PING_DELAYS   =   500;
 constexpr uint8_t  PING_TRYING   =     5;
 
-constexpr size_t    sz_useragent =   128;
 constexpr size_t    sz_sk_secret =   128;
 constexpr size_t    sz_pk_secret =   128;
 constexpr size_t    sz_mymemmory =   128;
@@ -141,17 +141,11 @@ class NEURGenerator {
       _und_cb = cb;
     }
 
-    // Конструкторы
-    NEURGenerator() = delete;
-
-    // Конструктор без TFT
-    NEURGenerator(const char* _sk_secret, const char* _pk_secret, const char* _mymemmory) {
+    // Конструктор
+    NEURGenerator() {
       self = this;
 
-      setKeySecret(_sk_secret, _pk_secret);
-      setMyMemmory(_mymemmory);
-
-      setWDT();
+      setVAL();
     }
 
     void setKeySecret(const char* _sk_secret, const char* _pk_secret) {
@@ -188,7 +182,7 @@ class NEURGenerator {
       }
     }
 
-    void setVAL(const char* ProjDevName, const char* ProjDevVers) {
+    void setVAL() {
       memset(wrk_status, 0, sz_wrk_status);
       memset(url_images, 0, sz_url_images);
       memset(url_transl, 0, sz_url_transl);
@@ -219,9 +213,6 @@ class NEURGenerator {
       memset(temp_models.names, 0, 64);
       memset(temp_models.title, 0, 64);
       memset(temp_models.price, 0, 64);
-
-      memset(useragent, 0, sz_useragent);
-      snprintf(useragent, sz_useragent, "%s %s", ProjDevName, ProjDevVers);
 
       state_gen = Status::OK_INITIALIZATION_API;
     }
@@ -723,7 +714,6 @@ class NEURGenerator {
     uint8_t  try_receive =    5;
     bool     wdt_enlarge = true;
 
-    char* useragent = (char*)heap_caps_malloc(sz_useragent, MALLOC_CAP_SPIRAM);
     char* sk_secret = (char*)heap_caps_malloc(sz_sk_secret, MALLOC_CAP_SPIRAM);
     char* pk_secret = (char*)heap_caps_malloc(sz_pk_secret, MALLOC_CAP_SPIRAM);
     char* mymemmory = (char*)heap_caps_malloc(sz_mymemmory, MALLOC_CAP_SPIRAM);
