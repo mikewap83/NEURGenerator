@@ -101,7 +101,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("\n=== NEURGenerator 1.2.0 - SD Card Save Example with Callbacks ===");
+  Serial.println("\n=== NEURGenerator 1.2.5 - SD Card Save Example with Callbacks ===");
 
   // Инициализация SD карты
   SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
