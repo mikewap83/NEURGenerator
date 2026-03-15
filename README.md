@@ -32,55 +32,31 @@ generator.generate();
 // Получение данных
 uint8_t* jpegData = generator.getImageData();
 size_t jpegSize = generator.getImageDataSize();
-Версия 1.1.0 - Генерация изображений
-Новые возможности:
+```
 
-Генерация изображений по текстовому описанию
 
-Поддержка разных моделей (flux, turbo)
-
-Настройка размера и качества
-
-Поддержка negative prompts
-
-Автоматические повторы при ошибках
-
-Пример генерации
-cpp
-// Настройка параметров
-generator.setModel("flux");
-generator.setSize(512, 512);
-generator.setQuality("medium");
-
-// Простая генерация
-generator.generateImage("a beautiful cat in space");
-
-// Генерация с negative prompt
-generator.generateImage("a beautiful cat", "ugly, blurry, bad quality");
-
-// Получение URL
-String url = generator.getLastImageUrl();
-История версий
-Версия 1.2.0 (текущая)
-✨ Добавлена подготовка промптов (суффиксы и модификаторы)
-✨ Добавлен автоматический перевод через MyMemory API
-✨ Добавлено хранение JPEG данных в PSRAM
-✨ Добавлены методы для получения сырых данных
-✨ Добавлена WDT защита от зависаний
-
-Версия 1.1.0
+## История версий
+## Версия 1.1.0
 ✨ Добавлена генерация изображений
+
 ✨ Поддержка разных моделей
+
 ✨ Настройка размера и качества
+
 ✨ Поддержка negative prompts
+
 ✨ Автоматические повторы при ошибках
 
-Версия 1.0.1
+## Версия 1.0.1
 🔧 Переход на GyverHTTP и GSON
+
 🔧 Поддержка PSRAM
+
 🔧 Добавлена проверка через ESP32Ping
 
-Версия 1.0.0
+## Версия 1.0.0
 🎉 Базовая инициализация
+
 🎉 Проверка баланса Pollen
+
 🎉 Подключение к WiFi
