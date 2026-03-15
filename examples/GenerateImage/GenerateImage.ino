@@ -4,7 +4,7 @@
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
-// API ключ из Pollinations
+// API ключи из Pollinations
 const char* apiKey = "YOUR_SK_API_KEY_HERE";
 const char* privateKey = "YOUR_PK_API_KEY_HERE";
 const char* myMemoryEmail = "YOUR_EMAIL@DOMAIN.COM";
@@ -24,7 +24,7 @@ esp_task_wdt_config_t twdt_config = {
 #endif
 
 // Создаем объект генератора
-NEURGenerator* generator = nullptr;
+NEURGenerator generator;
 
 void setup() {
   Serial.begin(115200);
@@ -40,25 +40,26 @@ void setup() {
   Serial.println("✅ WDT инициализирован в проекте");
 #endif
 
-  // Создаем объект генератора с ключами
-  generator = new NEURGenerator(apiKey, privateKey, myMemoryEmail);
+  // Устанавливаем ключи
+  generator.setKeySecret(apiKey, privateKey);
+  generator.setMyMemmory(myMemoryEmail);
 
   // Настройка параметров
-  generator->setUseHeads(true);      // Использовать заголовки
-  generator->setUsePings(true);      // Использовать ping
-  generator->setUseLoges(true);      // Выводить логи
+  generator.setUseHeads(true);      // Использовать заголовки
+  generator.setUsePings(true);      // Использовать ping
+  generator.setUseLoges(true);      // Выводить логи
 
 #if USE_WDT
-  generator->setUseTasks(true);      // Разрешить библиотеке вызывать esp_task_wdt_reset()
-  generator->setWDT(10000, &twdt_config); // Передаем конфигурацию для WDT_SURPLUS
+  generator.setUseTasks(true);      // Разрешить библиотеке вызывать esp_task_wdt_reset()
+  generator.setWDT(10000, &twdt_config); // Передаем конфигурацию для WDT_SURPLUS
   Serial.println("✅ Библиотека будет сбрасывать WDT");
 #else
-  generator->setUseTasks(false);     // Запретить библиотеке вызывать esp_task_wdt_reset()
+  generator.setUseTasks(false);     // Запретить библиотеке вызывать esp_task_wdt_reset()
   Serial.println("ℹ️ Библиотека не будет трогать WDT");
 #endif
 
   // Настройка таймаутов
-  generator->setAttempts(30000, 15000, 5, 5);
+  generator.setAttempts(30000, 15000, 5, 5);
 
   // Подключаемся к WiFi
   Serial.print("\n📡 Подключение к WiFi");
@@ -79,19 +80,19 @@ void setup() {
     // Проверяем баланс
     Serial.println("\n💰 Запрос баланса...");
 
-    if (generator->getApiPollen(apiKey)) {
+    if (generator.getApiPollen(apiKey)) {
       Serial.print("✅ Баланс: ");
-      Serial.print(generator->getPollen());
+      Serial.print(generator.getPollen());
       Serial.println(" pollen");
     } else {
       Serial.print("❌ Ошибка баланса: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
     }
 
     // Готовим промпт
     Serial.println("\n📝 Подготовка промпта...");
 
-    if (generator->data_prepare(
+    if (generator.data_prepare(
           "a beautiful cat in space, cyberpunk style",  // промпт
           "high quality, detailed",                     // суффикс
           "digital art",                                 // модификатор
@@ -99,20 +100,20 @@ void setup() {
           false                                          // перевод (false = не переводить)
         )) {
       Serial.print("✅ Промпт подготовлен: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
 
       // Отправляем запрос
       Serial.println("\n📤 Отправка запроса...");
 
-      if (generator->send_request()) {
+      if (generator.send_request()) {
         Serial.println("✅ Запрос отправлен, ожидание результата...");
       } else {
         Serial.print("❌ Ошибка отправки: ");
-        Serial.println(generator->getStateStatus(false));
+        Serial.println(generator.getStateStatus(false));
       }
     } else {
       Serial.print("❌ Ошибка подготовки промпта: ");
-      Serial.println(generator->getStateStatus(false));
+      Serial.println(generator.getStateStatus(false));
     }
 
   } else {
@@ -122,28 +123,30 @@ void setup() {
 
 void loop() {
   // Тикаем генератор для обработки всех процессов
-  if (generator) {
-    generator->tick(WiFi.status() == WL_CONNECTED);
+  generator.tick(WiFi.status() == WL_CONNECTED);
 
-    // Проверяем статус генерации
-    static uint32_t lastStatus = 0;
-    if (millis() - lastStatus > 2000) {
-      lastStatus = millis();
+  // Проверяем статус генерации
+  static uint32_t lastStatus = 0;
+  if (millis() - lastStatus > 2000) {
+    lastStatus = millis();
 
-      if (generator->isGenerating()) {
-        Serial.print("⏳ Статус: ");
-        Serial.println(generator->getStateStatus(true));
-      }
+    if (generator.isGenerating()) {
+      Serial.print("⏳ Статус: ");
+      Serial.println(generator.getStateStatus(true));
+    }
 
-      // Если изображение готово
-      if (generator->state_gen == NEURGenerator::Status::OK_GENERATING_READILY) {
-        Serial.println("\n✅ Изображение сгенерировано!");
-        Serial.print("📊 Размер JPEG: ");
-        Serial.print(generator->getImageDataSize());
-        Serial.println(" байт");
-      }
+    // Если изображение готово
+    if (generator.state_gen == NEURGenerator::Status::OK_GENERATING_READILY) {
+      Serial.println("\n✅ Изображение сгенерировано!");
+      Serial.print("📊 Размер JPEG: ");
+      Serial.print(generator.getImageDataSize());
+      Serial.println(" байт");
     }
   }
+
+#if USE_WDT
+  esp_task_wdt_reset();
+#endif
 
   delay(100);
 }
