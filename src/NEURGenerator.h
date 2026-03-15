@@ -154,7 +154,7 @@ private:
     ghttp::Client* _http;
     
     // Таймер для повторных попыток
-    GTimer _timer;
+    uTimer16<millis> _timer;
     
     // Константы
     static constexpr const char* HOST = "gen.pollinations.ai";
