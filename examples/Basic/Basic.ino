@@ -31,7 +31,7 @@ void setup() {
   delay(1000);
 
   Serial.println("\n=== NEURGenerator Basic Example ===");
-  Serial.println("Версия библиотеки: 1.2.0");
+  Serial.println("Версия библиотеки: 1.2.5");
 
 #if USE_WDT
   // Инициализация WDT (как в вашем AIFrameNEUR.ino)
