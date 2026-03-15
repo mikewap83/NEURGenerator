@@ -105,7 +105,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("\n=== NEURGenerator 1.2.0 - TFT Display Example with Callbacks ===");
+  Serial.println("\n=== NEURGenerator 1.2.5 - TFT Display Example with Callbacks ===");
 
   // Инициализация TFT
   tft.init();
