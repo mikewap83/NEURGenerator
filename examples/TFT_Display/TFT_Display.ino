@@ -35,20 +35,20 @@ TFT_eSPI tft = TFT_eSPI();
 // Для декодирования JPEG
 JPEGDEC jpeg;
 
-// ⭐ Callback для отрисовки JPEG
+// Callback для отрисовки JPEG
 int JPEGDraw(JPEGDRAW *pDraw) {
   tft.pushImage(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, pDraw->pPixels);
   return 1;
 }
 
-// ⭐ CALLBACK при начале генерации
+// CALLBACK при начале генерации
 void onRenderRun() {
   Serial.println("🎨 Начало генерации...");
   tft.fillScreen(TFT_BLACK);
   tft.drawString("Generating...", 10, 10);
 }
 
-// ⭐ CALLBACK при успешном завершении генерации
+// CALLBACK при успешном завершении генерации
 void onRenderEnd() {
   Serial.println("✅ Генерация завершена!");
 
@@ -82,7 +82,7 @@ void onRenderEnd() {
   }
 }
 
-// ⭐ CALLBACK при ошибке генерации
+// CALLBACK при ошибке генерации
 void onRenderErr() {
   Serial.print("❌ Ошибка генерации: ");
   Serial.println(generator.getStateStatus(true));
@@ -90,20 +90,20 @@ void onRenderErr() {
   tft.drawString("Gen Error", 10, 10);
 }
 
-// ⭐ CALLBACK при принудительной остановке
+// CALLBACK при принудительной остановке
 void onRenderUnd() {
   Serial.println("⏸️ Генерация прервана");
   tft.fillScreen(TFT_ORANGE);
   tft.drawString("Stopped", 10, 10);
 }
 
-// ⭐ CALLBACK при успешном переводе
+// CALLBACK при успешном переводе
 void onRenderEng() {
   Serial.println("🌐 Перевод выполнен");
   tft.drawString("Translation OK", 10, 50);
 }
 
-// ⭐ НОВЫЕ CALLBACK'и
+// НОВЫЕ CALLBACK'и
 void onRenderTft() {
   Serial.println("🖥️ Изображение готово для TFT");
   // Можно сразу отобразить, но onRenderEnd уже делает это
@@ -127,7 +127,6 @@ void setup() {
 
   Serial.println("\n=== NEURGenerator 2.0.0 - TFT Display Example ===");
 
-  // ⭐ ИНИЦИАЛИЗАЦИЯ LittleFS (для config.json)
   if (!LittleFS.begin()) {
     Serial.println("❌ Ошибка монтирования LittleFS");
     return;
@@ -155,33 +154,32 @@ void setup() {
   generator.setKeySecret(apiKey, privateKey);
   generator.setMyMemmory(myMemoryEmail);
 
-  // ⭐ Устанавливаем callback'и
+  // Устанавливаем callback'и
   generator.onRenderRun(onRenderRun);
   generator.onRenderEnd(onRenderEnd);
   generator.onRenderErr(onRenderErr);
   generator.onRenderUnd(onRenderUnd);
   generator.onRenderEng(onRenderEng);
-  generator.onRenderTft(onRenderTft);   // ⭐ НОВЫЙ
-  generator.onRenderRet(onRenderRet);   // ⭐ НОВЫЙ
-  generator.onRenderDel(onRenderDel);   // ⭐ НОВЫЙ
+  generator.onRenderTft(onRenderTft);
+  generator.onRenderRet(onRenderRet);
+  generator.onRenderDel(onRenderDel);
 
   // Настройка параметров
   generator.setUsePings(true);      // Использовать ping
   generator.setUseLoges(true);      // Выводить логи
-  generator.setUseScreen(true);     // ⭐ НОВОЕ: включить обработку экрана
+  generator.setUseScreen(true);     // включить обработку экрана
 
-  // ⭐ НОВЫЕ НАСТРОЙКИ API
-  generator.setAPIFreely(false);    // ⭐ платный режим
-  generator.setAPIAdjust(false);    // ⭐ отключить адаптивные размеры
-  generator.setAPISwitch(true);     // ⭐ включить перевод
+  generator.setAPIFreely(false);    // платный режим
+  generator.setAPIAdjust(false);    // отключить адаптивные размеры
+  generator.setAPISwitch(true);     // включить перевод
 
   // Настройка модели
-  generator.setAPINumber(0);            // индекс модели
+  generator.setAPINumber(0);             // индекс модели
   generator.setAPIModels("dreamshaper"); // модель
-  generator.setAPILevels(1);            // качество (0-низкое, 1-среднее, 2-высокое)
-  generator.setAPIScales(1);            // размер (0-маленький, 1-средний, 2-большой)
-  generator.setAPIEnhanc(false);        // улучшение
-  generator.setAPIFilter(false);        // фильтр
+  generator.setAPILevels(1);             // качество (0-низкое, 1-среднее, 2-высокое)
+  generator.setAPIScales(1);             // размер (0-маленький, 1-средний, 2-большой)
+  generator.setAPIEnhanc(false);         // улучшение
+  generator.setAPIFilter(false);         // фильтр
 
 #if USE_WDT
   generator.setUseTasks(true);      // Разрешить сброс WDT
@@ -219,7 +217,6 @@ void setup() {
     tft.drawString("WiFi OK", 10, 10);
     tft.drawString(WiFi.localIP().toString().c_str(), 10, 30);
 
-    // ⭐⭐ ЗАГРУЖАЕМ КОНФИГ ОДНОЙ СТРОКОЙ!
     Serial.println("\n📦 Загрузка конфига моделей...");
     tft.drawString("Loading config...", 10, 50);
     if (generator.load_config_from_file("/config.json") == 0) {
@@ -249,7 +246,6 @@ void setup() {
       return;
     }
 
-    // ⭐ ПОКАЗЫВАЕМ ЗАГРУЖЕННЫЕ МОДЕЛИ (в Serial, т.к. на TFT мало места)
     if (generator.getAPIModelsNamesCount() > 0) {
       Serial.println("\n📋 Доступные модели:");
       for (uint8_t i = 0; i < generator.getAPIModelsNamesCount(); i++) {
@@ -266,7 +262,6 @@ void setup() {
     tft.fillScreen(TFT_BLACK);
     tft.drawString("Preparing...", 10, 10);
 
-    // ⭐ data_prepare БЕЗ параметра translate (управляется через setAPISwitch)
     if (generator.data_prepare(
           "красивый закат над морем, пальмы, песок",  // промпт
           "high quality, detailed",                   // суффикс
