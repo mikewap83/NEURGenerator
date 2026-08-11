@@ -1,4 +1,4 @@
-#include   "NEURGenerator.h"
+#include "NEURGenerator.h"
 
 // Определяем статический член
 NEURGenerator* NEURGenerator::self = nullptr;
@@ -6,56 +6,354 @@ NEURGenerator* NEURGenerator::self = nullptr;
 // Определяем статические члены
 uint8_t* NEURGenerator::http_psram_buffer = nullptr;
 
+// Расширение буфера
+bool NEURGenerator::ExpandBuffer(char*& buffer, size_t& current_size, size_t needed,
+                                 size_t expand_step, size_t max_size) {
+  if (needed <= current_size) return true;
+  if (needed > max_size) return false;
+
+  size_t new_size = current_size + expand_step;
+  while (new_size < needed) {
+    new_size += expand_step;
+  }
+  if (new_size > max_size) new_size = max_size;
+  if (new_size <= current_size) return false;
+
+  char* new_buf = (char*)ps_realloc(buffer, new_size);
+  if (!new_buf) return false;
+
+  buffer = new_buf;
+  current_size = new_size;
+  return true;
+}
+
+// Получение размеров модели из конфига
+bool NEURGenerator::getModelScale(const char* model_name, uint8_t level,
+                                  uint16_t& _requestW, uint16_t& _requestH,
+                                  uint16_t& max_dimensionW, uint16_t& max_dimensionH) {
+  // 1. Проверяем, что конфиг загружен и модель существует
+  if (!_config_loaded || !_models_config || !model_name) {
+    return false;
+  }
+
+  // 2. Ищем модель по имени
+  size_config* found = nullptr;
+  for (uint8_t i = 0; i < _model_configs; i++) {
+    if (_models_config[i].names && strcmp(_models_config[i].names, model_name) == 0) {
+      found = &_models_config[i];
+      break;
+    }
+  }
+
+  // 3. Если модель не найдена
+  if (!found) {
+    if (flags.useloges) {
+      Serial.printf("⚠️ Модель '%s' не найдена в config.json\n", model_name);
+    }
+    return false;
+  }
+
+  // 4. Берём максимальные размеры
+  max_dimensionW = found->max_dimensionW;
+  max_dimensionH = found->max_dimensionH;
+
+  // 5. Ищем нужный уровень
+  for (uint8_t i = 0; i < found->scales_count; i++) {
+    if (found->scales[i].size_level == level) {
+      _requestW = found->scales[i].dimensionW;
+      _requestH = found->scales[i].dimensionH;
+      return true;
+    }
+  }
+
+  // 6. Уровень не найден - берём первый доступный
+  if (found->scales_count > 0) {
+    _requestW = found->scales[0].dimensionW;
+    _requestH = found->scales[0].dimensionH;
+    if (flags.useloges) {
+      Serial.printf("⚠️ Уровень %d не найден для модели '%s', взят первый: %dx%d\n",
+                    level, model_name, _requestW, _requestH);
+    }
+    return true;
+  }
+
+  // 7. Совсем ничего нет
+  return false;
+}
+
+uint8_t NEURGenerator::load_config(const char* jsonData, size_t jsonSize) {
+  if (!jsonData || jsonSize == 0) {
+    _config_loaded = false;
+    return 0;
+  }
+
+  gson::Parser json;
+  if (!json.parse(jsonData, jsonSize)) {
+    if (flags.useloges) Serial.println("❌ Ошибка парсинга config.json");
+    _config_loaded = false;
+    return 0;
+  }
+
+  if (!_models_config) {
+    _models_config = (size_config*)ps_malloc(API_MODELS_COUNT * sizeof(size_config));
+    if (!_models_config) {
+      if (flags.useloges) Serial.println("❌ Не удалось выделить PSRAM для size_config");
+      _config_loaded = false;
+      return 0;
+    }
+  }
+
+  memset(_models_config, 0, API_MODELS_COUNT * sizeof(size_config));
+  _model_configs = 0;
+
+  uint8_t models_len = json["models"].length();
+  if (models_len == 0) {
+    if (flags.useloges) Serial.println("⚠️ В config.json нет моделей");
+    _config_loaded = false;
+    return 0;
+  }
+
+  if (models_len > API_MODELS_COUNT) models_len = API_MODELS_COUNT;
+
+  for (uint8_t i = 0; i < models_len; i++) {
+    size_config* cfg = &_models_config[_model_configs];
+
+    const char* name = json["models"][i]["name"].c_str();
+    if (!name || name[0] == '\0') {
+      continue;
+    }
+
+    cfg->names = (char*)ps_malloc(strlen(name) + 1);
+    if (cfg->names) {
+      strcpy(cfg->names, name);
+    }
+
+    cfg->max_dimensionW = json["models"][i]["max_dimensionW"].toInt();
+    if (cfg->max_dimensionW == 0) cfg->max_dimensionW = 960;
+
+    cfg->max_dimensionH = json["models"][i]["max_dimensionH"].toInt();
+    if (cfg->max_dimensionH == 0) cfg->max_dimensionH = 640;
+
+    uint8_t scales_len = json["models"][i]["scales"].length();
+    if (scales_len > 3) scales_len = 3;
+    cfg->scales_count = scales_len;
+
+    for (uint8_t j = 0; j < scales_len; j++) {
+      cfg->scales[j].size_level = json["models"][i]["scales"][j]["level"].toInt();
+      cfg->scales[j].dimensionW = json["models"][i]["scales"][j]["width"].toInt();
+      cfg->scales[j].dimensionH = json["models"][i]["scales"][j]["height"].toInt();
+    }
+
+    _model_configs++;
+
+    if (flags.useloges) {
+      Serial.printf("✅ Загружена модель: %s, max: %dx%d\n",
+                    cfg->names ? cfg->names : "?",
+                    cfg->max_dimensionW, cfg->max_dimensionH);
+    }
+  }
+
+  _config_loaded = (_model_configs > 0);
+
+  if (flags.useloges) {
+    Serial.printf("📦 Загружено %d моделей из config.json\n", _model_configs);
+  }
+
+  return _model_configs;
+}
+
+uint8_t NEURGenerator::load_config_from_file(const char* filename) {
+  if (!filename) filename = "/config.json";
+
+  // Проверяем наличие файла
+  if (!LittleFS.exists(filename)) {
+    if (flags.useloges) Serial.printf("⚠️ Файл %s не найден\n", filename);
+    return 0;
+  }
+
+  File file = LittleFS.open(filename, "r");
+  if (!file) {
+    if (flags.useloges) Serial.printf("❌ Не удалось открыть %s\n", filename);
+    return 0;
+  }
+
+  size_t fileSize = file.size();
+  if (fileSize == 0) {
+    if (flags.useloges) Serial.printf("⚠️ Файл %s пустой\n", filename);
+    file.close();
+    return 0;
+  }
+
+  // Временный буфер для чтения
+  char* buffer = (char*)ps_malloc(fileSize + 1);
+  if (!buffer) {
+    if (flags.useloges) Serial.println("❌ Не удалось выделить память для чтения config.json");
+    file.close();
+    return 0;
+  }
+
+  file.readBytes(buffer, fileSize);
+  buffer[fileSize] = '\0';
+  file.close();
+
+  // Загружаем конфиг
+  uint8_t result = load_config(buffer, fileSize);
+
+  // Освобождаем временный буфер
+  heap_caps_free(buffer);
+
+  return result;
+}
+
+bool NEURGenerator::create_example_config(const char* filename) {
+  if (!filename) filename = "/config.json";
+
+  const char* config_json =
+    "{\n"
+    "  \"models\": [\n"
+    "    {\n"
+    "      \"name\": \"flux\",\n"
+    "      \"max_dimensionW\": 1024,\n"
+    "      \"max_dimensionH\": 768,\n"
+    "      \"scales\": [\n"
+    "        { \"level\": 0, \"width\": 512, \"height\": 384 },\n"
+    "        { \"level\": 1, \"width\": 768, \"height\": 576 },\n"
+    "        { \"level\": 2, \"width\": 1024, \"height\": 768 }\n"
+    "      ]\n"
+    "    },\n"
+    "    {\n"
+    "      \"name\": \"sana\",\n"
+    "      \"max_dimensionW\": 576,\n"
+    "      \"max_dimensionH\": 384,\n"
+    "      \"scales\": [\n"
+    "        { \"level\": 0, \"width\": 480, \"height\": 320 },\n"
+    "        { \"level\": 1, \"width\": 528, \"height\": 352 },\n"
+    "        { \"level\": 2, \"width\": 576, \"height\": 384 }\n"
+    "      ]\n"
+    "    },\n"
+    "    {\n"
+    "      \"name\": \"dreamshaper\",\n"
+    "      \"max_dimensionW\": 576,\n"
+    "      \"max_dimensionH\": 384,\n"
+    "      \"scales\": [\n"
+    "        { \"level\": 0, \"width\": 480, \"height\": 320 },\n"
+    "        { \"level\": 1, \"width\": 528, \"height\": 352 },\n"
+    "        { \"level\": 2, \"width\": 576, \"height\": 384 }\n"
+    "      ]\n"
+    "    },\n"
+    "    {\n"
+    "      \"name\": \"zimage\",\n"
+    "      \"max_dimensionW\": 960,\n"
+    "      \"max_dimensionH\": 640,\n"
+    "      \"scales\": [\n"
+    "        { \"level\": 0, \"width\": 480, \"height\": 320 },\n"
+    "        { \"level\": 1, \"width\": 720, \"height\": 480 },\n"
+    "        { \"level\": 2, \"width\": 960, \"height\": 640 }\n"
+    "      ]\n"
+    "    }\n"
+    "  ]\n"
+    "}";
+
+  File file = LittleFS.open(filename, "w");
+  if (!file) {
+    if (flags.useloges) Serial.printf("❌ Не удалось создать %s\n", filename);
+    return false;
+  }
+
+  size_t written = file.print(config_json);
+  file.close();
+
+  if (written == 0) {
+    if (flags.useloges) Serial.printf("❌ Ошибка записи в %s\n", filename);
+    return false;
+  }
+
+  if (flags.useloges) Serial.printf("✅ Создан пример конфига: %s (%d байт)\n", filename, written);
+
+  // Автоматически загружаем созданный конфиг
+  return load_config_from_file(filename) > 0;
+}
+
 void NEURGenerator::setStateStatus(Status new_state) {
   state_gen = new_state;
+  state_upd = true;
 
   switch (new_state) {
     case Status::OK_INITIALIZATION_API:
       break;
 
+    case Status::OK_WAITING_COMMAND:
+      break;
+
     case Status::OK_PREPARING_DATA:
       // Начало подготовки данных
       neur_timer.stop();
+      last_apicommands = millis();
       break;
 
-    case Status::OK_READY_TO_SEND:
-      if (!flags.useolder && _run_cb) {
+    case Status::OK_SENDING_REQUEST:
+      if (!flags.repeated && _run_cb) {
         _run_cb();
       }
 
       // Данные подготовлены, готовы к отправке
       _str_generations = millis();
+      last_apicommands = millis();
       break;
 
     case Status::OK_SENDING_ATTEMPT:
-      // Начата попытка отправки
       break;
 
-    case Status::OK_SENDING_REQUEST:
+    case Status::OK_RECEIVING_REQUEST:
+      if (flags.repeated) {
+        (url_images[0] != '\0') ? neur_timer.start() : neur_timer.stop();
+        _str_generations = millis();
+      }
+      last_apicommands = millis();
+      break;
+
+    case Status::OK_RECEIVING_ATTEMPT:
       break;
 
     case Status::OK_WAITING_FOR_RESULT:
-      (url_images[0] != '\0') ? neur_timer.start() : neur_timer.stop();
+      if (!flags.repeated) {
+        (url_images[0] != '\0') ? neur_timer.start() : neur_timer.stop();
+        _str_generations = millis();
+      }
+      last_apicommands = millis();
       break;
 
     case Status::OK_GENERATING_READILY:
       created_image++;
       _end_generations = SafeMillis(_str_generations, millis());
-      _end_generations = (_end_generations / POLLIN_PERIOD) * POLLIN_PERIOD;
+      _end_generations = (_end_generations / TIME_PERIOD) * TIME_PERIOD;
 
-      if (!flags.useolder && _end_cb) {
+      if (_tft_cb) {
+        _tft_cb();
+      }
+
+      if (!flags.repeated && _end_cb) {
         _end_cb();
       }
 
       neur_timer.stop();
 
-      flags.useolder = false;
+      flags.repeated = false;
+
+      last_apicommands = millis();
       break;
 
     case Status::OK_TRANSLATE:
       break;
 
     case Status::OK_DOWNLOADING:
+      last_apicommands = millis();
+      break;
+
+    case Status::OK_RETRY_DOWNLOADING:
+      if (_ret_cb) {
+        _ret_cb();
+      }
       break;
 
     case Status::GET_API_POLLEN:
@@ -72,22 +370,22 @@ void NEURGenerator::setStateStatus(Status new_state) {
       memset(url_images, 0, sz_url_images);
       error.request++;
 
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_REQUESTS:
       memset(url_images, 0, sz_url_images);
       error.request++;
 
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_RESPONSE:
@@ -99,76 +397,102 @@ void NEURGenerator::setStateStatus(Status new_state) {
       }
 
       neur_timer.stop();
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_RECEIVING:
       memset(url_images, 0, sz_url_images);
       error.receive++;
 
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_DECODINGS:
       memset(url_images, 0, sz_url_images);
       error.decoder++;
 
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_CONNECTION:
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_INITMEMORY:
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_OVERLOAD:
       _end_generations = 120000UL;
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_AUTHENTICATE:
       _end_generations = 300000UL;
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
+      break;
+
+    case Status::ERROR_BALANCEBUDGET:
+      _end_generations = 600000UL;
+      if (!flags.repeated && _err_cb) {
+        _err_cb();
+      }
+      flags.repeated = false;
+      break;
+
+    case Status::ERROR_ACCESSDENIED:
+      _end_generations = 300000UL;
+      if (!flags.repeated && _err_cb) {
+        _err_cb();
+      }
+      flags.repeated = false;
+      break;
+
+    case Status::ERROR_LOADEDOLDIMAGES:
+      _end_generations = 5000UL;
+      memset(url_images, 0, sz_url_images);
+
+      if (flags.repeated && _del_cb) {
+        _del_cb();
+      }
+      flags.repeated = false;
       break;
 
     case Status::ERROR_UNAVAILABLE:
       _end_generations = 600000UL;
-      if (!flags.useolder && _err_cb) {
+      if (!flags.repeated && _err_cb) {
         _err_cb();
       }
 
-      flags.useolder = false;
+      flags.repeated = false;
       break;
 
     case Status::ERROR_CONVERT:
@@ -226,6 +550,16 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
 
   WDT_sTimeout();//Запуск WDT
 
+  if (wdt_enlarge && (states == States::TRANSLATE || states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
+    esp_task_wdt_config_t long_wdt_config = {
+      .timeout_ms = WDT_SURPLUS + try_clients + _wdt_config->timeout_ms,
+      .idle_core_mask = _wdt_config->idle_core_mask,
+      .trigger_panic = _wdt_config->trigger_panic
+    };
+
+    esp_task_wdt_reconfigure(&long_wdt_config);
+  }
+
   // Создаем объект в PSRAM
   http = new (http_psram_buffer) ghttp::EspInsecureClient(host, port);
 
@@ -247,16 +581,26 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
   ghttp::Client::Headers headers;
 
   if (states == States::DEPARTURE || states == States::RECEIVING) {
-    if (sk_secret[0] != '\0' && strncmp(sk_secret, "Bearer ", 7) == 0) {
-      headers.add("Authorization", sk_secret);
-    }
-
-    if (flags.useheads) {
-      headers.add("Accept"         , "*/*");
+    if (flags.api_freely) {
+      headers.add("Accept"         , "image/jpeg, image/png"     );
       headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
-      headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
-      headers.add("Cache-Control"  , "no-cache");
-      headers.add("Connection"     , "keep-alive");
+      headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8"   );
+      headers.add("Cache-Control"  , "no-cache"                  );
+      headers.add("Connection"     , "keep-alive"                );
+
+      if (flags.useloges) Serial.println("🔓 Бесплатный режим: минимальные заголовки");
+    }
+    // ⭐ ПЛАТНЫЙ РЕЖИМ - полные заголовки
+    else {
+      if (!flags.repeated && sk_secret[0] != '\0' && strncmp(sk_secret, "Bearer ", 7) == 0) {
+        headers.add("Authorization", sk_secret);
+      }
+
+      headers.add("Accept"         , "image/jpeg, image/png"     );
+      headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
+      headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8"   );
+      headers.add("Cache-Control"  , "no-cache"                  );
+      headers.add("Connection"     , "keep-alive"                );
     }
   }
   else if (states == States::API_POLLEN || states == States::API_MODELS) {
@@ -266,35 +610,21 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
       headers.add("Authorization", sk_secret);
     }
 
-    if (flags.useheads) {
-      headers.add("Accept"         , "application/json");
-      headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
-      headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
-      headers.add("Cache-Control"  , "no-cache");
-      headers.add("Connection"     , "keep-alive");
-    }
+    headers.add("Accept"         , "application/json");
+    headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
+    headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
+    headers.add("Cache-Control"  , "no-cache");
+    headers.add("Connection"     , "keep-alive");
   }
   else if (states == States::TRANSLATE) {
-    if (flags.useheads) {
-      headers.add("Accept"         , "*/*");
-      headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
-      headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
-      headers.add("Cache-Control"  , "no-cache");
-      headers.add("Connection"     , "keep-alive");
-    }
+    headers.add("Accept"         , "*/*");
+    headers.add("User-Agent"     , "NEURGenerator for ESP32-S3");
+    headers.add("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
+    headers.add("Cache-Control"  , "no-cache");
+    headers.add("Connection"     , "keep-alive");
   }
 
   bool ok_query = false;
-
-  if (flags.usetasks && wdt_enlarge && (states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
-    esp_task_wdt_config_t long_wdt_config = {
-      .timeout_ms = WDT_SURPLUS + try_clients + _wdt_config->timeout_ms,
-      .idle_core_mask = _wdt_config->idle_core_mask,
-      .trigger_panic = _wdt_config->trigger_panic
-    };
-
-    esp_task_wdt_reconfigure(&long_wdt_config);
-  }
 
   if (data) {
     ok_query = http->request(path, method, headers, *data);
@@ -306,7 +636,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
     http->~EspInsecureClient();
     WDT_eTimeout(false);
 
-    if (flags.usetasks && wdt_enlarge && (states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
+    if (wdt_enlarge && (states == States::TRANSLATE || states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
       esp_task_wdt_reconfigure(_wdt_config);
     }
     return false;
@@ -320,7 +650,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
     http->~EspInsecureClient();
     WDT_eTimeout(false);
 
-    if (flags.usetasks && wdt_enlarge && (states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
+    if (wdt_enlarge && (states == States::TRANSLATE || states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
       esp_task_wdt_reconfigure(_wdt_config);
     }
     return false;
@@ -328,8 +658,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
 
   try_httpcode = resp.code();
 
-  // ⭐ ВОССТАНАВЛИВАЕМ ОРИГИНАЛЬНЫЙ ТАЙМАУТ WDT
-  if (flags.usetasks && wdt_enlarge && (states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
+  if (wdt_enlarge && (states == States::TRANSLATE || states == States::DEPARTURE || states == States::RECEIVING || states == States::API_POLLEN || states == States::API_MODELS)) {
     esp_task_wdt_reconfigure(_wdt_config);
   }
 
@@ -337,11 +666,24 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
     if (try_httpcode != 200) {
       http->~EspInsecureClient();
 
+      if (flags.repeated && try_httpcode == 401) {
+        if (flags.useloges) {
+          Serial.println("❌ ОШИБКА 401 ПРИ ПОВТОРНОЙ ЗАГРУЗКЕ: изображение недоступно");
+          Serial.println("🛑 Прекращаем все операции с этим изображением");
+        }
+
+        WDT_eTimeout(false);
+        return false;
+      }
+
       switch (try_httpcode) {
         case 400:
           break;
 
         case 401:
+          break;
+
+        case 402:
           break;
 
         case 403:
@@ -504,35 +846,81 @@ void NEURGenerator::tick(bool WiFiState) {
     http_stopped = false;
   }
 
+  if (state_gen == Status::OK_GENERATING_READILY) {
+    if (url_images && url_images[0] != '\0') {
+      if (SafeMillis(last_apicommands, millis()) >= WAIT_PERIOD) {
+        setStateStatus(Status::OK_WAITING_COMMAND);
+      }
+    }
+  }
+
   if (http_stopped) {
     return;
   }
 
   if (!WiFiState) return;
 
-  if (state_gen == Status::OK_DOWNLOADING && url_images && url_images[0] != '\0') {
-    setStateStatus(Status::OK_WAITING_FOR_RESULT);
-    attempt_network_count = 0;
-    if (flags.useloges) Serial.println("🚀 Начинаем попытки получения");
+  if (state_gen == Status::OK_DOWNLOADING) {
+    if (url_images && url_images[0] != '\0') {
+      if (SafeMillis(last_apicommands, millis()) >= STAY_PERIOD) {
+        if (!flags.repeated) {
+          setStateStatus(Status::OK_WAITING_FOR_RESULT);
+        } else {
+          setStateStatus(Status::OK_RECEIVING_REQUEST);
+          attempt_network_count = 0;
+          if (flags.useloges) Serial.println("🚀 Начинаем попытки получения");
 
-    if (flags.useloges && flags.usetasks && wdt_enlarge) {
-      Serial.printf("   WDT таймаут будет увеличен до %d мс\n", WDT_SURPLUS + try_clients + _wdt_config->timeout_ms);
+          if (flags.useloges && wdt_enlarge) {
+            Serial.printf("   WDT таймаут %d мс\n", WDT_SURPLUS + try_clients + _wdt_config->timeout_ms);
+          }
+        }
+      }
+    } else {
+      // ⚠️ URL пустой - ошибка!
+      if (flags.useloges) Serial.println("❌ Ошибка: URL для повторной загрузки пустой");
+      setStateStatus(Status::ERROR_AIGENERATION);
     }
   }
 
-  // ⭐ ОБРАБОТКА: готов к отправке -> начинаем попытки отправки
-  if (state_gen == Status::OK_READY_TO_SEND) {
+  if (state_gen == Status::OK_PREPARING_DATA) {
+    if (SafeMillis(last_apicommands, millis()) >= STAY_PERIOD) {
+      if (url_images && url_images[0] != '\0') {
+        setStateStatus(Status::OK_SENDING_REQUEST);
+        attempt_network_count = 0;
+        if (flags.useloges) Serial.println("🚀 Начинаем попытки отправки");
+
+        if (flags.useloges && wdt_enlarge) {
+          Serial.printf("   WDT таймаут %d мс\n", WDT_SURPLUS + try_clients + _wdt_config->timeout_ms);
+        }
+      } else {
+        // ⚠️ URL пустой - ошибка!
+        if (flags.useloges) Serial.println("❌ Ошибка: URL изображения не сформирован");
+        setStateStatus(Status::ERROR_AIGENERATION);
+      }
+    }
+  }
+
+  if (state_gen == Status::OK_WAITING_FOR_RESULT) {
+    if (SafeMillis(last_apicommands, millis()) >= TIME_PERIOD) {
+      setStateStatus(Status::OK_RECEIVING_REQUEST);
+      attempt_network_count = 0;
+      if (flags.useloges) Serial.println("🚀 Начинаем попытки получения");
+
+      if (flags.useloges && wdt_enlarge) {
+        Serial.printf("   WDT таймаут %d мс\n", WDT_SURPLUS + try_clients + _wdt_config->timeout_ms);
+      }
+    }
+  }
+
+  if ((state_gen == Status::OK_SENDING_REQUEST || state_gen == Status::OK_SENDING_ATTEMPT) && url_images && url_images[0] != '\0') {
+    if (state_gen == Status::OK_SENDING_REQUEST) {
+      if (SafeMillis(last_apicommands, millis()) < STAY_PERIOD) {
+        return;
+      }
+    }
+
     setStateStatus(Status::OK_SENDING_ATTEMPT);
-    attempt_network_count = 0;
-    if (flags.useloges) Serial.println("🚀 Начинаем попытки отправки");
 
-    if (flags.useloges && flags.usetasks && wdt_enlarge) {
-      Serial.printf("   WDT таймаут будет увеличен до %d мс\n", WDT_SURPLUS + try_clients + _wdt_config->timeout_ms);
-    }
-  }
-
-  // ⭐ ОБРАБОТКА ОТПРАВКИ ЗАПРОСА
-  if (state_gen == Status::OK_SENDING_ATTEMPT && url_images && url_images[0] != '\0') {
     if (attempt_network_count < try_request) {
       if (flags.useloges) Serial.printf("   - отправка запроса [%d/%d]\n", attempt_network_count + 1, try_request);
 
@@ -542,7 +930,13 @@ void NEURGenerator::tick(bool WiFiState) {
       }
 
       WDT_eTimeout(true); // Сброс WDT
-      bool ok_query = request_query(States::DEPARTURE, POLLIN_HOST, POLLIN_PORT, url_images, "GET");
+      bool ok_query = false;
+
+      if (flags.api_freely) {
+        ok_query = request_query(States::DEPARTURE, POLLIN_FREE, POLLIN_PORT, url_images, "GET");
+      } else {
+        ok_query = request_query(States::DEPARTURE, POLLIN_HOST, POLLIN_PORT, url_images, "GET");
+      }
       WDT_eTimeout(true); // Сброс WDT
 
       if (ok_query) {
@@ -551,8 +945,8 @@ void NEURGenerator::tick(bool WiFiState) {
         setStateStatus(Status::OK_WAITING_FOR_RESULT);
         attempt_network_count = 0;
 
-        if (flags.useloges && flags.usetasks && wdt_enlarge) {
-          Serial.printf("   WDT таймаут восстановлен до %d мс\n", _wdt_config->timeout_ms);
+        if (flags.useloges && wdt_enlarge) {
+          Serial.printf("   WDT таймаут %d мс\n", _wdt_config->timeout_ms);
         }
       } else {
         // Ошибка отправки
@@ -566,6 +960,10 @@ void NEURGenerator::tick(bool WiFiState) {
             break;
 
           case 401:
+            flags.critical = true;
+            break;
+
+          case 402:
             flags.critical = true;
             break;
 
@@ -595,7 +993,7 @@ void NEURGenerator::tick(bool WiFiState) {
             break;
         }
 
-        // ⭐ ДОБАВЛЕНО: Немедленная остановка при критических ошибках
+        // Немедленная остановка при критических ошибках
         if (flags.critical) {
           if (flags.useloges) Serial.printf("❌ Критическая ошибка сервера (код %d). Прекращаем попытки.\n", try_httpcode);
 
@@ -610,9 +1008,14 @@ void NEURGenerator::tick(bool WiFiState) {
               setStateStatus(Status::ERROR_AUTHENTICATE);
               break;
 
+            case 402:
+              if (flags.useloges) Serial.println("❌ ОШИБКА БАЛАНСА (402): Закончилась пыльца");
+              setStateStatus(Status::ERROR_BALANCEBUDGET);
+              break;
+
             case 403:
               if (flags.useloges) Serial.println("❌ ДОСТУП ЗАПРЕЩЕН (403): Нет прав для запроса");
-              setStateStatus(Status::ERROR_AUTHENTICATE);
+              setStateStatus(Status::ERROR_ACCESSDENIED);
               break;
 
             case 404:
@@ -640,8 +1043,8 @@ void NEURGenerator::tick(bool WiFiState) {
               break;
           }
 
-          if (flags.useloges && flags.usetasks && wdt_enlarge) {
-            Serial.printf("   WDT таймаут восстановлен до %d мс\n", _wdt_config->timeout_ms);
+          if (flags.useloges && wdt_enlarge) {
+            Serial.printf("   WDT таймаут %d мс\n", _wdt_config->timeout_ms);
           }
 
           // Сбрасываем счетчики
@@ -656,8 +1059,8 @@ void NEURGenerator::tick(bool WiFiState) {
           // Все попытки исчерпаны
           if (flags.useloges) Serial.printf("❌ Ошибка отправки после %d попыток\n", try_request);
 
-          if (flags.useloges && flags.usetasks && wdt_enlarge) {
-            Serial.printf("   WDT таймаут восстановлен до %d мс\n", _wdt_config->timeout_ms);
+          if (flags.useloges && wdt_enlarge) {
+            Serial.printf("   WDT таймаут %d мс\n", _wdt_config->timeout_ms);
           }
 
           setStateStatus(Status::ERROR_REQUESTS);
@@ -671,8 +1074,15 @@ void NEURGenerator::tick(bool WiFiState) {
     }
   }
 
-  // ⭐ ОБРАБОТКА ПОЛУЧЕНИЯ ОТВЕТА (существующая логика)
-  else if (state_gen == Status::OK_WAITING_FOR_RESULT && url_images && url_images[0] != '\0' && neur_timer.period(POLLIN_PERIOD)) {
+  else if ((state_gen == Status::OK_RECEIVING_REQUEST || state_gen == Status::OK_RECEIVING_ATTEMPT) && url_images && url_images[0] != '\0' && neur_timer.period(TIME_PERIOD)) {
+    if (state_gen == Status::OK_RECEIVING_REQUEST) {
+      if (SafeMillis(last_apicommands, millis()) < STAY_PERIOD) {
+        return;
+      }
+    }
+
+    setStateStatus(Status::OK_RECEIVING_ATTEMPT);
+
     if (resp_receive()) {
       attempt_network_count = 0;
       attempt_decoder_count = 0; // Сброс при успехе
@@ -680,22 +1090,29 @@ void NEURGenerator::tick(bool WiFiState) {
     } else {
       attempt_network_count++;
 
-      // ⭐ ПРОВЕРКА СЕТЕВЫХ ОШИБОК
+      if (flags.repeated && try_httpcode == 401) {
+        attempt_network_count = 0;
+        attempt_decoder_count = 0;
+        attempt_decoder = false;
+
+        setStateStatus(Status::ERROR_LOADEDOLDIMAGES);
+        return;
+      }
+
       if (attempt_network_count >= try_receive) {
         setStateStatus(Status::ERROR_RESPONSE);
         _end_generations = SafeMillis(_str_generations, millis());
-        _end_generations = (_end_generations / POLLIN_PERIOD) * POLLIN_PERIOD;
+        _end_generations = (_end_generations / TIME_PERIOD) * TIME_PERIOD;
 
         attempt_network_count = 0;
         attempt_decoder_count = 0;
         attempt_decoder = false;
       }
 
-      // ⭐ ПРОВЕРКА ОШИБОК ДЕКОДИРОВАНИЯ
       if (attempt_decoder && attempt_decoder_count >= try_receive) {
         setStateStatus(Status::ERROR_DECODINGS);
         _end_generations = SafeMillis(_str_generations, millis());
-        _end_generations = (_end_generations / POLLIN_PERIOD) * POLLIN_PERIOD;
+        _end_generations = (_end_generations / TIME_PERIOD) * TIME_PERIOD;
 
         attempt_network_count = 0;
         attempt_decoder_count = 0;
@@ -953,10 +1370,10 @@ bool NEURGenerator::getApiPollen(const char* _sk_secret) {
 
 bool NEURGenerator::ParserPollen(gson::Parser& json) {
   char* _pollen = (char*)heap_caps_malloc(sz_api_pollen, MALLOC_CAP_SPIRAM);
+  if (!_pollen) return false; // Проверка выделения памяти
 
+  // Получаем баланс как строку
   if (json["balance"].c_str()) {
-    memset(_pollen, 0, sz_api_pollen);
-
     strncpy(_pollen, json["balance"].c_str(), sz_api_pollen - 1);
     _pollen[sz_api_pollen - 1] = '\0';
   } else {
@@ -964,51 +1381,29 @@ bool NEURGenerator::ParserPollen(gson::Parser& json) {
   }
 
   if (_pollen[0] != '\0') {
-    memset(api_pollen, 0, sz_api_pollen);
+    // Преобразуем в double для точного форматирования
+    double balance = atof(_pollen);
 
-    // Ищем точку в числе
-    char* dot_ptr = strchr(_pollen, '.');
-
-    if (dot_ptr) {
-      // Копируем часть до точки
-      size_t int_len = dot_ptr - _pollen;
-      strncpy(api_pollen, _pollen, int_len);
-      api_pollen[int_len] = '.';
-
-      // Копируем 4 цифры после точки
-      const char* fraction_ptr = dot_ptr + 1;
-      for (int i = 0; i < 4; i++) {
-        if (fraction_ptr[i] >= '0' && fraction_ptr[i] <= '9') {
-          api_pollen[int_len + 1 + i] = fraction_ptr[i];
-        } else {
-          api_pollen[int_len + 1 + i] = '0'; // Дополняем нулями если недостаточно цифр
-        }
-      }
-      api_pollen[int_len + 5] = '\0'; // Завершаем строку
-    } else {
-      // Если точки нет, добавляем ".0000"
-      snprintf(api_pollen, sz_api_pollen, "%s.0000", _pollen);
-    }
+    // Форматируем с 4 знаками после запятой
+    snprintf(api_pollen, sz_api_pollen, "%.4f", balance);
 
     if (flags.useloges) Serial.printf("✅ Баланс получен: %s pollen\n", api_pollen);
 
     heap_caps_free(_pollen);
     return true;
-  }
-  else {
+  } else {
     // НЕ ЗАПИСЫВАЕМ API_ERROR_JSON, ЕСЛИ БАЛАНС УЖЕ БЫЛ ПОЛУЧЕН
     if (strcmp(api_pollen, API_POLLEN_NO_DATA) == 0 ||
         strcmp(api_pollen, API_NO_ACCESS) == 0 ||
         strcmp(api_pollen, API_ERROR_JSON) == 0) {
 
       // Только для начальных состояний
-      memset(api_pollen, 0, sz_api_pollen);
-      snprintf(api_pollen, sz_api_pollen - 1, API_ERROR_JSON);
+      snprintf(api_pollen, sz_api_pollen, "%s", API_ERROR_JSON);
 
       if (flags.useloges) Serial.println("❌ Ошибка парсинга баланса");
     } else {
       // Баланс уже был получен ранее, сохраняем старое значение
-      if (flags.useloges) Serial.printf("⚠️  Ошибка парсинга, но баланс уже был: %s pollen\n", api_pollen);
+      if (flags.useloges) Serial.printf("⚠️ Ошибка парсинга, но баланс уже был: %s pollen\n", api_pollen);
     }
 
     heap_caps_free(_pollen);
@@ -1067,13 +1462,13 @@ bool NEURGenerator::ParserModels(gson::Parser& json) {
 
     // ✅ Обнуляем и ставим значения по умолчанию
     memset(json_models.names, 0, sz_model_names);
-    snprintf(json_models.names, sz_model_names - 1, API_MODELS_NAMES); // "zimage"
+    snprintf(json_models.names, sz_model_names - 1, API_MODELS_NAMES);
 
     memset(json_models.title, 0, sz_model_title);
-    snprintf(json_models.title, sz_model_title - 1, API_MODELS_TITLE); // "Z-Image Turbo"
+    snprintf(json_models.title, sz_model_title - 1, API_MODELS_TITLE);
 
     memset(json_models.price, 0, sz_model_price);
-    snprintf(json_models.price, sz_model_price - 1, API_MODELS_PRICE); // "0.0002"
+    snprintf(json_models.price, sz_model_price - 1, API_MODELS_PRICE);
 
     return false;
   }
@@ -1088,6 +1483,15 @@ bool NEURGenerator::ParserModels(gson::Parser& json) {
   char* _price = (char*)heap_caps_malloc(sz_model_price, MALLOC_CAP_SPIRAM);
   char* _short = (char*)heap_caps_malloc(sz_model_title, MALLOC_CAP_SPIRAM);
 
+  if (!_names || !_title || !_price || !_short) {
+    if (flags.useloges) Serial.println("❌ Ошибка выделения памяти для парсинга моделей");
+    if (_names) heap_caps_free(_names);
+    if (_title) heap_caps_free(_title);
+    if (_price) heap_caps_free(_price);
+    if (_short) heap_caps_free(_short);
+    return false;
+  }
+
   // Ограничиваем количество моделей
   uint8_t models_to_process = min((int)json.rootLength(), API_MODELS_COUNT);
 
@@ -1099,19 +1503,23 @@ bool NEURGenerator::ParserModels(gson::Parser& json) {
 
     WDT_eTimeout(false);
 
+    // ⭐ ИЗМЕНЕНО: используем "title" вместо "description"
     if (json[i]["name"].c_str()) {
       strncpy(_names, json[i]["name"].c_str(), sz_model_names - 1);
       _names[sz_model_names - 1] = '\0';
     }
 
-    if (json[i]["description"].c_str()) {
-      strncpy(_title, json[i]["description"].c_str(), sz_model_title - 1);
+    if (json[i]["title"].c_str()) {
+      strncpy(_title, json[i]["title"].c_str(), sz_model_title - 1);
       _title[sz_model_title - 1] = '\0';
     }
 
     if (json[i]["pricing"]["completionImageTokens"].c_str()) {
-      strncpy(_price, json[i]["pricing"]["completionImageTokens"].c_str(), sz_model_price - 1);
-      _price[sz_model_price - 1] = '\0';
+      // ⭐ ИЗМЕНЕНО: парсим как double и форматируем с 4 знаками
+      double price = atof(json[i]["pricing"]["completionImageTokens"].c_str());
+      snprintf(_price, sz_model_price, "%.4f", price);
+    } else {
+      snprintf(_price, sz_model_price, "%.4f", 0.0);
     }
 
     if (_title[0] != '\0') {
@@ -1187,6 +1595,8 @@ bool NEURGenerator::data_prepare(const char* prompt
                                  , const char* denial
                                  , bool translate) {
 
+  flags.repeated = false;
+
   // Сброс предыдущих состояний
   attempt_decoder = false;
   attempt_network_count = 0;
@@ -1206,30 +1616,94 @@ bool NEURGenerator::data_prepare(const char* prompt
     return false;
   }
 
-  switch (api_scales) {
-    case APIScales::SCALE_LOW   :
-      _requestWidth  = 480;
-      _requestHeight = 320;
-      break;
+  uint16_t _requestW = 0;
+  uint16_t _requestH = 0;
+  uint16_t max_dimensionW = 0;
+  uint16_t max_dimensionH = 0;
 
-    case APIScales::SCALE_MEDIUM:
-      _requestWidth  = 640;
-      _requestHeight = 480;
-      break;
+  if (flags.api_adjust) {
+    // Пытаемся получить размеры из загруженного config.json
+    if (getModelScale(api_models, (uint8_t)api_scales,
+                      _requestW, _requestH,
+                      max_dimensionW, max_dimensionH)) {
+      // ✅ Успешно получили из конфига
+      if (flags.useloges) {
+        Serial.printf("📐 Размеры из конфига: %s -> %dx%d (max: %dx%d)\n",
+                      api_models, _requestW, _requestH,
+                      max_dimensionW, max_dimensionH);
+      }
+    } else {
+      // ❌ Не нашли в конфиге - используем fallback
+      if (flags.useloges) {
+        Serial.printf("⚠️ Модель '%s' не найдена в конфиге, используем fallback\n", api_models);
+      }
 
-    case APIScales::SCALE_HIGH  :
-      _requestWidth  = 960;
-      _requestHeight = 640;
-      break;
-
-    default                    :
-      _requestWidth  = 480;
-      _requestHeight = 320;
-      break;
+      // FALLBACK: FLUX
+      if (strcmp(api_models, "flux") == 0) {
+        switch (api_scales) {
+          case APIScales::SCALE_LOW   : _requestW = 512; _requestH = 384; break;
+          case APIScales::SCALE_MEDIUM: _requestW = 768; _requestH = 576; break;
+          case APIScales::SCALE_HIGH  : _requestW = 1024; _requestH = 768; break;
+          default                     : _requestW = 512; _requestH = 384; break;
+        }
+        max_dimensionW = 1024;
+        max_dimensionH = 768;
+      }
+      // FALLBACK: SANA
+      else if (strcmp(api_models, "sana") == 0) {
+        switch (api_scales) {
+          case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
+          case APIScales::SCALE_MEDIUM: _requestW = 528; _requestH = 352; break;
+          case APIScales::SCALE_HIGH  : _requestW = 576; _requestH = 384; break;
+          default                     : _requestW = 480; _requestH = 320; break;
+        }
+        max_dimensionW = 576;
+        max_dimensionH = 384;
+      }
+      // FALLBACK: DREAMSHAPER
+      else if (strcmp(api_models, "dreamshaper") == 0) {
+        switch (api_scales) {
+          case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
+          case APIScales::SCALE_MEDIUM: _requestW = 528; _requestH = 352; break;
+          case APIScales::SCALE_HIGH  : _requestW = 576; _requestH = 384; break;
+          default                     : _requestW = 480; _requestH = 320; break;
+        }
+        max_dimensionW = 576;
+        max_dimensionH = 384;
+      }
+      // FALLBACK: ZIMAGE (обычный режим)
+      else {
+        switch (api_scales) {
+          case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
+          case APIScales::SCALE_MEDIUM: _requestW = 720; _requestH = 480; break;
+          case APIScales::SCALE_HIGH  : _requestW = 960; _requestH = 640; break;
+          default                     : _requestW = 480; _requestH = 320; break;
+        }
+        max_dimensionW = 960;
+        max_dimensionH = 640;
+      }
+    }
+  }
+  // ПРОВЕРКА ПРОГРЕССИВНОГО JPEG
+  else if (isProgressive[api_number]._flag) {
+    _requestW = 480 * 2;
+    _requestH = 320 * 2;
+    max_dimensionW = 480 * 2;
+    max_dimensionH = 320 * 2;
+  }
+  // ОБЫЧНЫЙ РЕЖИМ
+  else {
+    switch (api_scales) {
+      case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
+      case APIScales::SCALE_MEDIUM: _requestW = 720; _requestH = 480; break;
+      case APIScales::SCALE_HIGH  : _requestW = 960; _requestH = 640; break;
+      default                     : _requestW = 480; _requestH = 320; break;
+    }
+    max_dimensionW = 960;
+    max_dimensionH = 640;
   }
 
-  const uint16_t max_dimension = 960;
-  if (_requestWidth == 0 || _requestHeight == 0 || _requestWidth > max_dimension || _requestHeight > max_dimension) {
+  if (_requestW == 0 || _requestH == 0 || _requestW > max_dimensionW || _requestH > max_dimensionH) {
     setStateStatus(Status::ERROR_AIGENERATION);
     return false;
   }
@@ -1251,9 +1725,6 @@ bool NEURGenerator::data_prepare(const char* prompt
     }
   }
 
-  // Проверяем пинг сервера
-  bool possible = true;
-
   flags.translate = translate;
 
   // 4. Очистка буферов
@@ -1269,37 +1740,29 @@ bool NEURGenerator::data_prepare(const char* prompt
   memset(eng_prompt, 0, sz_eng_prompt);
 
   // 5. Подготовка основного промпта (с переводом если нужно)
-  if (flags.translate && isRussianText(prompt)) {
-    if (possible) {
-      // Перевод возможен (есть связь)
-      strcpy(rus_prompt, prompt);
+  if (flags.api_switch && isRussianText(prompt)) {
+    strcpy(rus_prompt, prompt);
 
-      // Пытаемся перевести
-      url_encode(prompt, enc_prompt);
-      memset(url_transl, 0, sz_url_transl);
+    // Пытаемся перевести
+    url_encode(prompt, enc_prompt);
+    memset(url_transl, 0, sz_url_transl);
 
-      // Формируем URL запроса с параметром email если установлен
-      if (mymemmory && mymemmory[0] != '\0') {
-        snprintf(url_transl, sz_url_transl, "/get?q=%s&langpair=ru|en&de=%s",
-                 enc_prompt, mymemmory);
-        if (flags.useloges) Serial.printf("✅ Используем зарегистрированный email: %s\n", mymemmory);
-      } else {
-        snprintf(url_transl, sz_url_transl, "/get?q=%s&langpair=ru|en", enc_prompt);
-      }
-
-      bool translate_ok = request_query(States::TRANSLATE, TRANS_HOST, TRANS_PORT, url_transl, "GET");
-
-      if (translate_ok && eng_prompt[0] != '\0') {
-        strcpy(tmp_prompt, eng_prompt);
-        if (flags.useloges) Serial.println("✅ Использован переведенный промпт");
-      } else {
-        strcpy(tmp_prompt, prompt);
-        if (flags.useloges) Serial.println("⚠️  Использован оригинальный промпт (перевод не удался)");
-      }
+    if (mymemmory && mymemmory[0] != '\0') {
+      snprintf(url_transl, sz_url_transl, "/get?q=%s&langpair=ru|en&de=%s",
+               enc_prompt, mymemmory);
+      if (flags.useloges) Serial.printf("✅ Используем зарегистрированный email: %s\n", mymemmory);
     } else {
-      // Перевод нужен, но связи нет - используем оригинальный
+      snprintf(url_transl, sz_url_transl, "/get?q=%s&langpair=ru|en", enc_prompt);
+    }
+
+    bool translate_ok = request_query(States::TRANSLATE, TRANS_HOST, TRANS_PORT, url_transl, "GET");
+
+    if (translate_ok && eng_prompt[0] != '\0') {
+      strcpy(tmp_prompt, eng_prompt);
+      if (flags.useloges) Serial.println("✅ Использован переведенный промпт");
+    } else {
       strcpy(tmp_prompt, prompt);
-      if (flags.useloges) Serial.println("⚠️  Использован оригинальный промпт (нет связи с переводчиком)");
+      if (flags.useloges) Serial.println("⚠️  Использован оригинальный промпт (перевод не удался)");
     }
   } else {
     // Перевод не нужен
@@ -1337,66 +1800,56 @@ bool NEURGenerator::data_prepare(const char* prompt
   const char* api_filter_str = api_filter ? "true" : "false";
 
   // 10. Формирование URL
-  if (denial && denial[0] != '\0') {
-    // Кодирование negative_prompt
-    url_encode(denial, enc_denial);
+  if (flags.api_freely) {
+    uint16_t _requestFreeW = 480;
+    uint16_t _requestFreeH = 320;
 
-    if (pk_secret && pk_secret[0] != '\0') {
-      // Есть negative_prompt И есть ключ
-      snprintf(url_images, sz_url_images,
-               "https://%s/image/%s?seed=%d"
-               "&negative_prompt=%s&model=%s&enhance=%s&private=true&nologo=true&quality=%s&%s&safe=%s"
-               "&%s",
-               POLLIN_HOST,
-               enc_prompt, seed,
-               enc_denial,
-               api_models_str,
-               api_enhanc_str,
-               api_levels_str,
-               api_scales_str,
-               api_filter_str,
-               pk_secret);
-    } else {
-      // Есть negative_prompt, НО нет ключа
-      snprintf(url_images, sz_url_images,
-               "https://%s/image/%s?seed=%d"
-               "&negative_prompt=%s&model=%s&enhance=%s&private=true&nologo=true&quality=%s&%s&safe=%s",
-               POLLIN_HOST,
-               enc_prompt, seed,
-               enc_denial,
-               api_models_str,
-               api_enhanc_str,
-               api_levels_str,
-               api_scales_str,
-               api_filter_str);
+    switch (api_scales) {
+      case APIScales::SCALE_LOW   : _requestFreeW = 480; _requestFreeH = 320; break;
+      case APIScales::SCALE_MEDIUM: _requestFreeW = 672; _requestFreeH = 448; break;
+      case APIScales::SCALE_HIGH  : _requestFreeW = 864; _requestFreeH = 576; break;
+      default                     : _requestFreeW = 480; _requestFreeH = 320; break;
     }
-  } else {
-    if (pk_secret && pk_secret[0] != '\0') {
-      // Нет negative_prompt, НО есть ключ
+
+    if (denial && denial[0] != '\0') {
+      url_encode(denial, enc_denial);
       snprintf(url_images, sz_url_images,
-               "https://%s/image/%s?seed=%d"
-               "&model=%s&enhance=%s&private=true&nologo=true&quality=%s&%s&safe=%s"
-               "&%s",
-               POLLIN_HOST,
-               enc_prompt, seed,
-               api_models_str,
-               api_enhanc_str,
-               api_levels_str,
-               api_scales_str,
-               api_filter_str,
-               pk_secret);
+               "https://%s/prompt/%s?negative_prompt=%s&enhance=%s&nologo=true&quality=%s&seed=%d&width=%d&height=%d&safe=%s",
+               POLLIN_FREE, enc_prompt, enc_denial, api_enhanc_str, api_levels_str, seed, _requestFreeW, _requestFreeH, api_filter_str);
     } else {
-      // Нет negative_prompt И нет ключа
       snprintf(url_images, sz_url_images,
-               "https://%s/image/%s?seed=%d"
-               "&model=%s&enhance=%s&private=true&nologo=true&quality=%s&%s&safe=%s",
-               POLLIN_HOST,
-               enc_prompt, seed,
-               api_models_str,
-               api_enhanc_str,
-               api_levels_str,
-               api_scales_str,
-               api_filter_str);
+               "https://%s/prompt/%s?enhance=%s&nologo=true&quality=%s&seed=%d&width=%d&height=%d&safe=%s",
+               POLLIN_FREE, enc_prompt, api_enhanc_str, api_levels_str, seed, _requestFreeW, _requestFreeH, api_filter_str);
+    }
+
+    if (flags.useloges) {
+      Serial.println("🔓 БЕСПЛАТНЫЙ РЕЖИМ (image.pollinations.ai)");
+      Serial.printf("📐 Размеры: %dx%d\n", _requestFreeW, _requestFreeH);
+    }
+  }
+  else {
+    if (denial && denial[0] != '\0') {
+      url_encode(denial, enc_denial);
+
+      if (pk_secret && pk_secret[0] != '\0') {
+        snprintf(url_images, sz_url_images,
+                 "https://%s/image/%s?negative_prompt=%s&model=%s&enhance=%s&nologo=true&quality=%s&seed=%d&%s&safe=%s&%s",
+                 POLLIN_HOST, enc_prompt, enc_denial, api_models_str, api_enhanc_str, api_levels_str, seed, api_scales_str, api_filter_str, pk_secret);
+      } else {
+        snprintf(url_images, sz_url_images,
+                 "https://%s/image/%s?negative_prompt=%s&model=%s&enhance=%s&nologo=true&quality=%s&seed=%d&%s&safe=%s",
+                 POLLIN_HOST, enc_prompt, enc_denial, api_models_str, api_enhanc_str, api_levels_str, seed, api_scales_str, api_filter_str);
+      }
+    } else {
+      if (pk_secret && pk_secret[0] != '\0') {
+        snprintf(url_images, sz_url_images,
+                 "https://%s/image/%s?model=%s&enhance=%s&nologo=true&quality=%s&seed=%d&%s&safe=%s&%s",
+                 POLLIN_HOST, enc_prompt, api_models_str, api_enhanc_str, api_levels_str, seed, api_scales_str, api_filter_str, pk_secret);
+      } else {
+        snprintf(url_images, sz_url_images,
+                 "https://%s/image/%s?model=%s&enhance=%s&nologo=true&quality=%s&seed=%d&%s&safe=%s",
+                 POLLIN_HOST, enc_prompt, api_models_str, api_enhanc_str, api_levels_str, seed, api_scales_str, api_filter_str);
+      }
     }
   }
 
@@ -1406,8 +1859,8 @@ bool NEURGenerator::data_prepare(const char* prompt
     Serial.println(url_images);
   }
 
-  // 12. Установить статус "готов к отправке"
-  setStateStatus(Status::OK_READY_TO_SEND);
+  // 12. Установить статус "подготовка к отправке"
+  setStateStatus(Status::OK_SENDING_REQUEST);
 
   return true;
 }
@@ -1420,13 +1873,15 @@ bool NEURGenerator::send_request() {
   }
 
   // Проверяем пинг сервера
-  bool ok_pings = getPingServer(POLLIN_HOST);
+  // ⭐ ВЫБИРАЕМ ХОСТ ДЛЯ ПИНГА
+  const char* ping_host = flags.api_freely ? POLLIN_FREE : POLLIN_HOST;
+  bool ok_pings = getPingServer(ping_host);
   if (!ok_pings) {
-    if (flags.useloges) Serial.printf("❌ Ошибка связи с сервером\n");
+    if (flags.useloges) Serial.printf("❌ Ошибка связи с сервером %s\n", ping_host);
     setStateStatus(Status::ERROR_CONNECTION);
     return false;
   } else {
-    if (flags.useloges) Serial.printf("✅ Связь с сервером установлена\n");
+    if (flags.useloges) Serial.printf("✅ Связь с сервером %s установлена\n", ping_host);
   }
 
   // Начинаем процесс отправки
@@ -1450,12 +1905,42 @@ bool NEURGenerator::resp_receive() {
     Serial.printf("📥 Получение ответа Pollination\n");
   }
 
-  WDT_sTimeout();//Запуск WDT
+  if (flags.useloges && wdt_enlarge) {
+    Serial.printf("   WDT таймаут %d мс\n", WDT_SURPLUS + try_clients + _wdt_config->timeout_ms);
+  }
+
   if (flags.useloges) Serial.printf("   - получение ответа [%d/%d]\n", attempt_network_count + 1, try_receive);
+  WDT_sTimeout();//Запуск WDT
 
-  ok_query = request_query(States::RECEIVING, POLLIN_HOST, POLLIN_PORT, url_images);
+  const char* target_host = POLLIN_HOST;
+
+  // Ищем хост в URL
+  const char* start = strstr(url_images, "://");
+  if (start) {
+    start += 3; // Пропускаем "://"
+    const char* end = strchr(start, '/');
+    if (end) {
+      size_t host_len = end - start;
+
+      // Сравниваем с POLLIN_FREE
+      if (strncmp(start, POLLIN_FREE, host_len) == 0 && host_len == strlen(POLLIN_FREE)) {
+        target_host = POLLIN_FREE;
+        if (flags.useloges) Serial.println("🔓 Определен бесплатный хост из URL: image.pollinations.ai");
+      }
+      // Сравниваем с POLLIN_HOST
+      else if (strncmp(start, POLLIN_HOST, host_len) == 0 && host_len == strlen(POLLIN_HOST)) {
+        target_host = POLLIN_HOST;
+        if (flags.useloges) Serial.println("🔒 Определен платный хост из URL: gen.pollinations.ai");
+      } else {
+        if (flags.useloges) Serial.printf("⚠️ Неизвестный хост: %.*s, используем gen.pollinations.ai\n", (int)host_len, start);
+      }
+    }
+  } else {
+    if (flags.useloges) Serial.println("⚠️ Не удалось определить хост из URL, используем gen.pollinations.ai");
+  }
+
+  ok_query = request_query(States::RECEIVING, target_host, POLLIN_PORT, url_images);
   WDT_eTimeout(true); // Сброс WDT
-
 
   if (ok_query) {
     if (flags.useloges) {
@@ -1464,13 +1949,14 @@ bool NEURGenerator::resp_receive() {
       Serial.printf("💾 Использование буфера: %.1f%%\n", (jpegDataSum * 100.0) / sz_jpegDataBuf);
     }
 
-    if (flags.useloges && flags.usetasks && wdt_enlarge) {
-      Serial.printf("   WDT таймаут восстановлен до %d мс\n", _wdt_config->timeout_ms);
+    if (flags.useloges && wdt_enlarge) {
+      Serial.printf("   WDT таймаут %d мс\n", _wdt_config->timeout_ms);
     }
   }
   else {
     attempt_decoder = true;
   }
+
   return ok_query;
 }
 
@@ -1546,6 +2032,38 @@ bool NEURGenerator::stop_receive() {
 }
 
 bool NEURGenerator::ReaderJPG(Stream& stream) {
+  // Лямбда для проверки прогрессивного JPEG
+  auto isProgressiveJPEG = [&](const uint8_t* buffer, size_t size) -> bool {
+    for (size_t i = 0; i < size - 1; ++i) {
+      if (buffer[i] == 0xFF && buffer[i + 1] == 0xC2) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Лямбда для поиска конца первого слоя
+  auto isFirstLayerComplete = [&](const uint8_t* buffer, size_t size) -> bool {
+    size_t sos_pos = 0;
+    for (size_t i = 0; i < size - 1; ++i) {
+      if (buffer[i] == 0xFF && buffer[i + 1] == 0xDA) {
+        sos_pos = i;
+        break;
+      }
+    }
+    if (sos_pos == 0) return false;
+
+    // Ищем следующий маркер после SOS
+    for (size_t j = sos_pos + 4; j < size - 1; ++j) {
+      if (buffer[j] == 0xFF && buffer[j + 1] != 0x00) {
+        uint8_t marker = buffer[j + 1];
+        if (marker >= 0xD0 && marker <= 0xD7) continue;
+        return true;
+      }
+    }
+    return false;
+  };
+
   if (!jpegDataBuf) {
     jpegDataBuf = (char*)ps_malloc(sz_jpegDataBuf);
     if (!jpegDataBuf) {
@@ -1564,10 +2082,26 @@ bool NEURGenerator::ReaderJPG(Stream& stream) {
   jpegDataSum = 0;
   stream.setTimeout(1000);
 
-  memset(jpegDataBuf, 0, sz_jpegDataBuf);//очищаем буфер перед каждым чтением
+  memset(jpegDataBuf, 0, sz_jpegDataBuf);
 
-  while (stream.available() > 0 && jpegDataSum < sz_jpegDataBuf) {
+  bool type_detect = false;
+  bool is_progress = false;
+  bool is_complete = false;
+
+  bool is_flux_adjust = (flags.api_adjust && strcmp(api_models, "flux") == 0);
+  bool is_sana_adjust = (flags.api_adjust && strcmp(api_models, "sana") == 0);
+  bool is_dreamshaper_adjust = (flags.api_adjust && strcmp(api_models, "dreamshaper") == 0);
+
+  // Читаем данные
+  while (stream.available() > 0) {
     WDT_eTimeout(false);
+
+    size_t needed = jpegDataSum + 512 + 1;
+    if (!ExpandBuffer(jpegDataBuf, sz_jpegDataBuf, needed, BUF_EXPAND_INT, BUF_EXPAND_MAX)) {
+      setStateStatus(Status::ERROR_INITMEMORY);
+      if (flags.useloges) Serial.printf("❌ Не удалось расширить буфер до %d байт\n", needed);
+      break;
+    }
 
     size_t to_read = min((size_t)512, sz_jpegDataBuf - jpegDataSum);
     size_t bytes_read = stream.readBytes((jpegDataBuf + jpegDataSum), to_read);
@@ -1577,45 +2111,197 @@ bool NEURGenerator::ReaderJPG(Stream& stream) {
 
     jpegDataSum += bytes_read;
 
-    if (jpegDataSum >= 2) {
-      if ((uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF &&
-          (uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9) {
-        break;
+    if (!flags.usescreen) {
+      // Проверяем наличие заголовка JPEG во всём буфере
+      bool validJPEG_start = false;
+      for (size_t i = 0; i < jpegDataSum - 1; ++i) {
+        if ((uint8_t)jpegDataBuf[i] == 0xFF &&
+            (uint8_t)jpegDataBuf[i + 1] == 0xD8) {
+          validJPEG_start = true;
+
+          if (flags.useloges) Serial.printf("📴 Экран отключен, заголовок JPEG найден (байт %d)\n", i);
+          break;
+        }
+      }
+
+      if (validJPEG_start) {
+        setStateStatus(Status::OK_GENERATING_READILY);
+
+        WDT_eTimeout(true);
+        return true;
+      }
+
+      // Защита: если прочитали много, а заголовка нет - ошибка
+      if (jpegDataSum > 16384) {
+        if (flags.useloges) Serial.println("❌ Заголовок JPEG не найден");
+
+        attempt_decoder = true;
+        WDT_eTimeout(true);
+        return false;
+      }
+
+      continue;
+    } else {
+      // ПЕРВОЕ УСЛОВИЕ: FLUX/SANA/DREAMSHAPER С АДАПТИВНЫМ РАЗМЕРОМ
+      if (is_flux_adjust || is_sana_adjust || is_dreamshaper_adjust) {
+        if (!type_detect && jpegDataSum >= 16384) {
+          is_progress = isProgressiveJPEG((uint8_t*)jpegDataBuf, jpegDataSum);
+          type_detect = true;
+
+          if (!flags.repeated) {
+            isProgressive[api_number]._flag = is_progress;
+            if (flags.useloges) {
+              Serial.println(is_progress ? "📸 сервер вернул прогрессивный JPEG" : "📸 сервер вернул базовый JPEG");
+            }
+          } else if (flags.useloges) {
+            Serial.println(is_progress ? "📸 сервер вернул прогрессивный JPEG" : "📸 сервер вернул базовый JPEG");
+          }
+        }
+
+        if (is_progress) {
+          if (isFirstLayerComplete((uint8_t*)jpegDataBuf, jpegDataSum)) {
+            if (flags.useloges) Serial.println("⏹️ Конец первого слоя (прогрессивный), изображение готово");
+            is_complete = true;
+            break;
+          }
+        } else {
+          if (jpegDataSum >= 2) {
+            if ((uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF &&
+                (uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9) {
+              if (flags.useloges) Serial.println("⏹️ Конец файла (базовый), изображение готово");
+              is_complete = true;
+              break;
+            }
+          }
+        }
+      }
+      // ВТОРОЕ УСЛОВИЕ: Прогрессивный JPEG
+      else if (isProgressive[api_number]._flag || flags.repeated) {
+        if (flags.repeated && !isProgressive[api_number]._flag) {
+          if (!type_detect && jpegDataSum >= 16384) {
+            is_progress = isProgressiveJPEG((uint8_t*)jpegDataBuf, jpegDataSum);
+            type_detect = true;
+
+            if (flags.useloges) {
+              Serial.println(is_progress ? "📸 Повторная загрузка: обнаружен прогрессивный JPEG"
+                             : "📸 Повторная загрузка: базовый JPEG");
+            }
+          }
+        }
+
+        if (isProgressive[api_number]._flag || is_progress) {
+          if (isFirstLayerComplete((uint8_t*)jpegDataBuf, jpegDataSum)) {
+            if (flags.useloges) Serial.println("⏹️ Конец первого слоя, изображение готово");
+            is_complete = true;
+            break;
+          }
+        } else {
+          if (jpegDataSum >= 2) {
+            if ((uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF &&
+                (uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9) {
+              if (flags.useloges) Serial.println("⏹️ Конец файла, изображение готово");
+              is_complete = true;
+              break;
+            }
+          }
+        }
+      }
+      // ТРЕТЬЕ УСЛОВИЕ: Определяем тип для новой генерации
+      else {
+        if (!type_detect && jpegDataSum >= 16384) {
+          is_progress = isProgressiveJPEG((uint8_t*)jpegDataBuf, jpegDataSum);
+
+          if (is_progress) {
+            type_detect = true;
+
+            if (flags.useloges) Serial.println("📸 Прогрессивный JPEG, нужен повторный запрос");
+            isProgressive[api_number]._flag = 1;
+
+            setStateStatus(Status::OK_RETRY_DOWNLOADING);
+
+            return false;
+          } else {
+            type_detect = true;
+            if (flags.useloges) Serial.println("📸 Базовый JPEG, читаем до конца");
+            isProgressive[api_number]._flag = 0;
+          }
+        }
+
+        if (!is_progress && jpegDataSum >= 2) {
+          if ((uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF &&
+              (uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9) {
+            if (flags.useloges) Serial.println("⏹️ Конец файла, изображение готово");
+            is_complete = true;
+            break;
+          }
+        }
       }
     }
   }
 
-  bool validJPEG_one = ((uint8_t)jpegDataBuf[0] == 0xFF && (uint8_t)jpegDataBuf[1] == 0xD8);
-  bool validJPEG_two = (jpegDataSum >= 2) &&
-                       ((uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF) &&
-                       ((uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9);
+  if (is_complete) {
+    WDT_eTimeout(true);
+    setStateStatus(Status::OK_GENERATING_READILY);
+    return true;
+  }
 
-  if (jpegDataSum == 0) {
-    if (flags.useloges) Serial.printf("Данные изображения не получены\n");
+  bool validJPEG_start = (jpegDataSum >= 2 &&
+                          (uint8_t)jpegDataBuf[0] == 0xFF &&
+                          (uint8_t)jpegDataBuf[1] == 0xD8);
+
+  if (jpegDataSum == 0 || !validJPEG_start) {
+    if (flags.useloges) Serial.printf("❌ Данные изображения не получены или невалидны\n");
     WDT_eTimeout(false);
-
     attempt_decoder = false;
     return false;
   }
 
-  if (!validJPEG_one || !validJPEG_two) {
-    WDT_eTimeout(false);
-
-    attempt_decoder = true;
-    return false;
+  if (is_flux_adjust || is_sana_adjust || is_dreamshaper_adjust) {
+    if (is_progress) {
+      if (jpegDataSum < 100) {
+        if (flags.useloges) Serial.println("❌ Недостаточно данных для первого слоя");
+        WDT_eTimeout(false);
+        attempt_decoder = true;
+        return false;
+      }
+      if (flags.useloges) Serial.printf("✅ Прогрессивный JPEG (1 слой): %d байт\n", jpegDataSum);
+    } else {
+      bool validJPEG_end = (jpegDataSum >= 2 &&
+                            (uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF &&
+                            (uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9);
+      if (!validJPEG_end) {
+        if (flags.useloges) Serial.println("❌ Нет маркера конца JPEG");
+        WDT_eTimeout(false);
+        attempt_decoder = true;
+        return false;
+      }
+      if (flags.useloges) Serial.printf("✅ Базовый JPEG: %d байт\n", jpegDataSum);
+    }
   }
-
-  // Успешно получили данные JPEG в буфер jpegDataBuf, размер jpegDataSum
-  if (flags.useloges) {
-    Serial.printf("✅ JPEG получен, размер: %d байт\n", jpegDataSum);
+  else if (isProgressive[api_number]._flag) {
+    if (jpegDataSum < 100) {
+      if (flags.useloges) Serial.println("❌ Недостаточно данных для первого слоя");
+      WDT_eTimeout(false);
+      attempt_decoder = true;
+      return false;
+    }
+    if (flags.useloges) Serial.printf("✅ Прогрессивный JPEG (1 слой): %d байт\n", jpegDataSum);
   }
-
-  setStateStatus(Status::OK_GENERATING_READILY);
-  attempt_decoder_count = 0;
-  attempt_decoder = false;
+  else {
+    bool validJPEG_end = (jpegDataSum >= 2 &&
+                          (uint8_t)jpegDataBuf[jpegDataSum - 2] == 0xFF &&
+                          (uint8_t)jpegDataBuf[jpegDataSum - 1] == 0xD9);
+    if (!validJPEG_end) {
+      if (flags.useloges) Serial.println("❌ Нет маркера конца JPEG");
+      WDT_eTimeout(false);
+      attempt_decoder = true;
+      return false;
+    }
+    if (flags.useloges) Serial.printf("✅ Базовый JPEG: %d байт\n", jpegDataSum);
+  }
 
   WDT_eTimeout(true);
-
+  setStateStatus(Status::OK_GENERATING_READILY);
   return true;
 }
 
@@ -1644,5 +2330,5 @@ void NEURGenerator::PresentImage(const char* _url_images) {
   // Устанавливаем статус загрузки
   setStateStatus(Status::OK_DOWNLOADING);
 
-  flags.useolder = true;
+  flags.repeated = true;
 }
