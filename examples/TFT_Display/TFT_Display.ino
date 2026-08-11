@@ -1,4 +1,6 @@
 #include <NEURGenerator.h>
+#include <FS.h>
+#include <LittleFS.h>
 #include <TFT_eSPI.h>
 #include <JPEGDEC.h>
 
@@ -33,20 +35,20 @@ TFT_eSPI tft = TFT_eSPI();
 // Для декодирования JPEG
 JPEGDEC jpeg;
 
-// Callback для отрисовки JPEG
+// ⭐ Callback для отрисовки JPEG
 int JPEGDraw(JPEGDRAW *pDraw) {
   tft.pushImage(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, pDraw->pPixels);
   return 1;
 }
 
-// Callback при начале генерации
+// ⭐ CALLBACK при начале генерации
 void onRenderRun() {
   Serial.println("🎨 Начало генерации...");
   tft.fillScreen(TFT_BLACK);
   tft.drawString("Generating...", 10, 10);
 }
 
-// Callback при успешном завершении генерации
+// ⭐ CALLBACK при успешном завершении генерации
 void onRenderEnd() {
   Serial.println("✅ Генерация завершена!");
 
@@ -75,12 +77,12 @@ void onRenderEnd() {
       tft.drawString("JPEG Error", 10, 10);
     }
 
-    // Очищаем буфер но можно и не очищать потом может пригодится
-    //generator.clearImageData();
+    // Очищаем буфер (опционально)
+    // generator.clearImageData();
   }
 }
 
-// Callback при ошибке генерации
+// ⭐ CALLBACK при ошибке генерации
 void onRenderErr() {
   Serial.print("❌ Ошибка генерации: ");
   Serial.println(generator.getStateStatus(true));
@@ -88,24 +90,49 @@ void onRenderErr() {
   tft.drawString("Gen Error", 10, 10);
 }
 
-// Callback при принудительной остановке
+// ⭐ CALLBACK при принудительной остановке
 void onRenderUnd() {
   Serial.println("⏸️ Генерация прервана");
   tft.fillScreen(TFT_ORANGE);
   tft.drawString("Stopped", 10, 10);
 }
 
-// Callback при успешном переводе
+// ⭐ CALLBACK при успешном переводе
 void onRenderEng() {
   Serial.println("🌐 Перевод выполнен");
   tft.drawString("Translation OK", 10, 50);
+}
+
+// ⭐ НОВЫЕ CALLBACK'и
+void onRenderTft() {
+  Serial.println("🖥️ Изображение готово для TFT");
+  // Можно сразу отобразить, но onRenderEnd уже делает это
+}
+
+void onRenderRet() {
+  Serial.println("🔄 Повторная загрузка изображения");
+  tft.fillScreen(TFT_BLACK);
+  tft.drawString("Retry...", 10, 10);
+}
+
+void onRenderDel() {
+  Serial.println("🗑️ Изображение удалено (недоступно)");
+  tft.fillScreen(TFT_RED);
+  tft.drawString("Image Deleted", 10, 10);
 }
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("\n=== NEURGenerator 1.2.5 - TFT Display Example with Callbacks ===");
+  Serial.println("\n=== NEURGenerator 2.0.0 - TFT Display Example ===");
+
+  // ⭐ ИНИЦИАЛИЗАЦИЯ LittleFS (для config.json)
+  if (!LittleFS.begin()) {
+    Serial.println("❌ Ошибка монтирования LittleFS");
+    return;
+  }
+  Serial.println("✅ LittleFS смонтирована");
 
   // Инициализация TFT
   tft.init();
@@ -128,23 +155,41 @@ void setup() {
   generator.setKeySecret(apiKey, privateKey);
   generator.setMyMemmory(myMemoryEmail);
 
-  // Устанавливаем callback'и
+  // ⭐ Устанавливаем callback'и
   generator.onRenderRun(onRenderRun);
   generator.onRenderEnd(onRenderEnd);
   generator.onRenderErr(onRenderErr);
   generator.onRenderUnd(onRenderUnd);
   generator.onRenderEng(onRenderEng);
+  generator.onRenderTft(onRenderTft);   // ⭐ НОВЫЙ
+  generator.onRenderRet(onRenderRet);   // ⭐ НОВЫЙ
+  generator.onRenderDel(onRenderDel);   // ⭐ НОВЫЙ
 
   // Настройка параметров
-  generator.setUseHeads(true);      // Использовать заголовки
   generator.setUsePings(true);      // Использовать ping
   generator.setUseLoges(true);      // Выводить логи
+  generator.setUseScreen(true);     // ⭐ НОВОЕ: включить обработку экрана
+
+  // ⭐ НОВЫЕ НАСТРОЙКИ API
+  generator.setAPIFreely(false);    // ⭐ платный режим
+  generator.setAPIAdjust(false);    // ⭐ отключить адаптивные размеры
+  generator.setAPISwitch(true);     // ⭐ включить перевод
+
+  // Настройка модели
+  generator.setAPINumber(0);            // индекс модели
+  generator.setAPIModels("dreamshaper"); // модель
+  generator.setAPILevels(1);            // качество (0-низкое, 1-среднее, 2-высокое)
+  generator.setAPIScales(1);            // размер (0-маленький, 1-средний, 2-большой)
+  generator.setAPIEnhanc(false);        // улучшение
+  generator.setAPIFilter(false);        // фильтр
 
 #if USE_WDT
   generator.setUseTasks(true);      // Разрешить сброс WDT
   generator.setWDT(10000, &twdt_config);
+  Serial.println("✅ Библиотека будет сбрасывать WDT");
 #else
   generator.setUseTasks(false);     // Запретить сброс WDT
+  Serial.println("ℹ️ Библиотека не будет трогать WDT");
 #endif
 
   // Настройка таймаутов
@@ -174,9 +219,18 @@ void setup() {
     tft.drawString("WiFi OK", 10, 10);
     tft.drawString(WiFi.localIP().toString().c_str(), 10, 30);
 
+    // ⭐⭐ ЗАГРУЖАЕМ КОНФИГ ОДНОЙ СТРОКОЙ!
+    Serial.println("\n📦 Загрузка конфига моделей...");
+    tft.drawString("Loading config...", 10, 50);
+    if (generator.load_config_from_file("/config.json") == 0) {
+      Serial.println("⚠️ Конфиг не найден, создаем пример...");
+      generator.create_example_config("/config.json");
+    }
+
     // Проверяем баланс
     Serial.println("\n💰 Запрос баланса...");
-    tft.drawString("Balance...", 10, 50);
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString("Balance...", 10, 10);
 
     if (generator.getApiPollen(apiKey)) {
       Serial.print("✅ Баланс: ");
@@ -195,17 +249,29 @@ void setup() {
       return;
     }
 
+    // ⭐ ПОКАЗЫВАЕМ ЗАГРУЖЕННЫЕ МОДЕЛИ (в Serial, т.к. на TFT мало места)
+    if (generator.getAPIModelsNamesCount() > 0) {
+      Serial.println("\n📋 Доступные модели:");
+      for (uint8_t i = 0; i < generator.getAPIModelsNamesCount(); i++) {
+        Serial.printf("  %d: %s - %s (%s)\n",
+                      i,
+                      generator.getAPIModelsNamesByIndex(i),
+                      generator.getAPIModelsTitleByIndex(i),
+                      generator.getAPIModelsPriceByIndex(i));
+      }
+    }
+
     // Готовим промпт
     Serial.println("\n📝 Подготовка промпта...");
     tft.fillScreen(TFT_BLACK);
     tft.drawString("Preparing...", 10, 10);
 
+    // ⭐ data_prepare БЕЗ параметра translate (управляется через setAPISwitch)
     if (generator.data_prepare(
           "красивый закат над морем, пальмы, песок",  // промпт
-          "high quality, detailed",                    // суффикс
-          "digital art",                                // модификатор
-          "ugly, blurry",                               // negative prompt
-          true                                          // translate = true (включить перевод)
+          "high quality, detailed",                   // суффикс
+          "digital art",                               // модификатор
+          "ugly, blurry"                               // negative prompt
         )) {
       Serial.println("✅ Промпт подготовлен");
       tft.drawString("Prompt OK", 10, 30);
