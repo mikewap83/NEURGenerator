@@ -615,51 +615,51 @@ class NEURGenerator {
 
     const char* getStateStatus(bool expand = false) {
       switch (state_gen) {
-        case Status::OK_INITIALIZATION_API:          return expand ? "инициализация API нейросети"                : "..."                   ;
-        case Status::OK_WAITING_COMMAND   :          return expand ? "ожидание команды для нейросети"             : "ожидание команды"      ;
-        case Status::OK_PREPARING_DATA    :          return expand ? "подготовка данных для отправки запроса"     : "подготовка данных"     ;
+        case Status::OK_INITIALIZATION_API:          return expand ? "инициализация API нейросети"                : "..."                     ;
+        case Status::OK_WAITING_COMMAND   :          return expand ? "ожидание команды для нейросети"             : "ожидание команды"        ;
+        case Status::OK_PREPARING_DATA    :          return expand ? "подготовка данных для отправки запроса"     : "подготовка данных"       ;
 
-        case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке" ;
+        case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке"   ;
         case Status::OK_SENDING_ATTEMPT   :
           snprintf(wrk_status, sz_wrk_status,
                    expand ? "отправка запроса в нейросеть (попытка %2d/%2d)" : "отправка (попытка %2d/%2d)",
                    attempt_network_count + 1, try_request);
           return wrk_status;
 
-        case Status::OK_RECEIVING_REQUEST :          return expand ? "подготовка к загрузке ответа от нейросети"  : "подготовка к загрузке" ;
+        case Status::OK_RECEIVING_REQUEST :          return expand ? "подготовка к загрузке ответа от нейросети"  : "подготовка к загрузке"   ;
         case Status::OK_RECEIVING_ATTEMPT :
           snprintf(wrk_status, sz_wrk_status,
                    expand ? "загрузка ответа от нейросети (попытка %2d/%2d)" : "загрузка (попытка %2d/%2d)",
                    attempt_network_count + 1, try_receive);
           return wrk_status;
 
-        case Status::OK_WAITING_FOR_RESULT:          return expand ? "ожидание ответа от нейросети"               : "ожидание результата"   ;
-        case Status::OK_GENERATING_READILY:          return expand ? "генерация завершена успешно"                : "изображение получено"  ;
-        case Status::OK_TRANSLATE         :          return expand ? "перевод промпта на английский язык"         : "перевод промпта"       ;
-        case Status::OK_DOWNLOADING       :          return expand ? "получение сгенерированного изображения"     : "получение изображения" ;
-        case Status::OK_RETRY_DOWNLOADING :          return expand ? "повторное получение изображения"            : "повторное получение"   ;
-        case Status::GET_API_POLLEN       :          return expand ? "обновление остатка баланса"                 : "обновление баланса"    ;
-        case Status::GET_API_POLLEN_OK    :          return expand ? "успешное обновление баланса"                : "баланс обновлён"       ;
-        case Status::GET_API_POLLEN_ERR   :          return expand ? "ошибка обновления баланса"                  : "ошибка баланса"        ;
-        case Status::GET_API_MODELS       :          return expand ? "обновление доступных моделей"               : "обновление моделей"    ;
-        case Status::GET_API_MODELS_OK    :          return expand ? "успешное обновление моделей"                : "модели обновлены"      ;
-        case Status::GET_API_MODELS_ERR   :          return expand ? "ошибка обновления моделей"                  : "ошибка моделей"        ;
-        case Status::ERROR_REQUESTS       :          return expand ? "не удалось отправить запрос к нейросети"    : "ошибка отправки"       ;
-        case Status::ERROR_RESPONSE       :          return expand ? "нейросеть вернула некорректный ответ"       : "ошибка ответа"         ;
-        case Status::ERROR_AIGENERATION   :          return expand ? "нейросеть не смогла сгенерировать контент"  : "ошибка AI"             ;
-        case Status::ERROR_RECEIVING      :          return expand ? "проблема при получении данных от сервера"   : "ошибка получения"      ;
-        case Status::ERROR_DECODINGS      :          return expand ? "сбой при декодировании изображения"         : "ошибка декодирования"  ;
-        case Status::ERROR_CONNECTION     :          return expand ? "нет подключения к интернету"                : "нет связи"             ;
-        case Status::ERROR_INITMEMORY     :          return expand ? "недостаточно памяти PSRAM для генерации"    : "нет PSRAM"             ;
-        case Status::ERROR_OVERLOAD       :          return expand ? "слишком частые запросы, подождите"          : "перегрузка"            ;
-        case Status::ERROR_AUTHENTICATE   :          return expand ? "ошибка ключа доступа, проверьте ключ API"   : "ошибка ключа доступа"  ;
-        case Status::ERROR_BALANCEBUDGET  :          return expand ? "ошибка недостаточный баланс пыльцы"         : "недостаточный баланс"  ;
-        case Status::ERROR_ACCESSDENIED   :          return expand ? "ошибка доступа нет необходимых разрешений"  : "доступ запрещен"       ;
-        case Status::ERROR_LOADEDOLDIMAGES:          return expand ? "срок хранения изображения истек"            : "изображение недоступно";
-        case Status::ERROR_UNAVAILABLE    :          return expand ? "серверы генерации недоступны"               : "сервер не доступен"    ;
-        case Status::ERROR_CONVERT        :          return expand ? "ошибка при переводе промпта"                : "ошибка перевода"       ;
-        case Status::ERROR_CONVERT_LIMIT  :          return expand ? "достигнут лимит доступных переводов"        : "лимит переводов"       ;
-        default                           :          return expand ? "неизвестна, попробуйте позже"               : "неизвестно"            ;
+        case Status::OK_WAITING_FOR_RESULT:          return expand ? "ожидание ответа от нейросети"               : "ожидание результата"     ;
+        case Status::OK_GENERATING_READILY:          return expand ? "генерация завершена успешно"                : "изображение получено"    ;
+        case Status::OK_TRANSLATE         :          return expand ? "перевод промпта на английский язык"         : "перевод текста промпта"  ;
+        case Status::OK_DOWNLOADING       :          return expand ? "получение сгенерированного изображения"     : "получение изображения"   ;
+        case Status::OK_RETRY_DOWNLOADING :          return expand ? "получение сгенерированного изображения"     : "получение изображения"   ;
+        case Status::GET_API_POLLEN       :          return expand ? "обновление остатка баланса"                 : "обновление баланса"      ;
+        case Status::GET_API_POLLEN_OK    :          return expand ? "успешное обновление баланса"                : "баланс обновлён успешно" ;
+        case Status::GET_API_POLLEN_ERR   :          return expand ? "ошибка обновления баланса"                  : "ошибка получения баланса";
+        case Status::GET_API_MODELS       :          return expand ? "обновление доступных моделей"               : "обновление моделей"      ;
+        case Status::GET_API_MODELS_OK    :          return expand ? "успешное обновление моделей"                : "модели обновлены успешно";
+        case Status::GET_API_MODELS_ERR   :          return expand ? "ошибка обновления моделей"                  : "ошибка получения моделей";
+        case Status::ERROR_REQUESTS       :          return expand ? "не удалось отправить запрос к нейросети"    : "ошибка отправки запроса" ;
+        case Status::ERROR_RESPONSE       :          return expand ? "нейросеть вернула некорректный ответ"       : "ошибка получения ответа" ;
+        case Status::ERROR_AIGENERATION   :          return expand ? "нейросеть не смогла сгенерировать контент"  : "ошибка генерации данных" ;
+        case Status::ERROR_RECEIVING      :          return expand ? "проблема при получении данных от сервера"   : "ошибка получения данных" ;
+        case Status::ERROR_DECODINGS      :          return expand ? "сбой при декодировании изображения"         : "ошибка декодирования"    ;
+        case Status::ERROR_CONNECTION     :          return expand ? "нет подключения к интернету"                : "ошибка нет интернета"    ;
+        case Status::ERROR_INITMEMORY     :          return expand ? "недостаточно памяти PSRAM для генерации"    : "ошибка нет памяти PSRAM" ;
+        case Status::ERROR_OVERLOAD       :          return expand ? "слишком частые запросы, подождите"          : "ошибка частые запросы"   ;
+        case Status::ERROR_AUTHENTICATE   :          return expand ? "ошибка ключа доступа, проверьте ключ API"   : "ошибка ключа доступа"    ;
+        case Status::ERROR_BALANCEBUDGET  :          return expand ? "ошибка недостаточный баланс пыльцы"         : "ошибка баланса пыльцы"   ;
+        case Status::ERROR_ACCESSDENIED   :          return expand ? "ошибка доступа нет необходимых разрешений"  : "ошибка нет разрешений"   ;
+        case Status::ERROR_LOADEDOLDIMAGES:          return expand ? "срок хранения изображения истек"            : "изображение недоступно"  ;
+        case Status::ERROR_UNAVAILABLE    :          return expand ? "серверы генерации недоступны"               : "сервер не доступен"      ;
+        case Status::ERROR_TRANSLATE      :          return expand ? "ошибка при переводе промпта"                : "ошибка перевода промпта" ;
+        case Status::ERROR_TRANSLATE_LIMIT:          return expand ? "достигнут лимит доступных переводов"        : "ошибка перевод ограничен";
+        default                           :          return expand ? "неизвестна, попробуйте позже"               : "неизвестно"              ;
       }
     }
 
