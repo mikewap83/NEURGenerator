@@ -27,7 +27,6 @@ esp_task_wdt_config_t twdt_config = {
 
 NEURGenerator generator;
 
-// ⭐ CALLBACK'и
 void onRenderRun() {
   Serial.println("🎨 Начало генерации...");
 }
@@ -67,7 +66,6 @@ void setup() {
 
   Serial.println("\n=== NEURGenerator 2.0.0 - Генерация изображений ===");
 
-  // ⭐ ИНИЦИАЛИЗАЦИЯ LittleFS
   if (!LittleFS.begin()) {
     Serial.println("❌ Ошибка монтирования LittleFS");
     return;
@@ -85,7 +83,6 @@ void setup() {
   generator.setKeySecret(apiKey, privateKey);
   generator.setMyMemmory(myMemoryEmail);
 
-  // ⭐ CALLBACK'и
   generator.onRenderRun(onRenderRun);
   generator.onRenderEnd(onRenderEnd);
   generator.onRenderErr(onRenderErr);
@@ -99,7 +96,6 @@ void setup() {
   generator.setUseLoges(true);
   generator.setUseScreen(true);
 
-  // ⭐ НОВЫЕ НАСТРОЙКИ API
   generator.setAPIFreely(false);
   generator.setAPIAdjust(false);
   generator.setAPISwitch(true);
@@ -140,7 +136,6 @@ void setup() {
     Serial.print("📊 IP адрес: ");
     Serial.println(WiFi.localIP());
 
-    // ⭐⭐ ЗАГРУЖАЕМ КОНФИГ ОДНОЙ СТРОКОЙ!
     Serial.println("\n📦 Загрузка конфига моделей...");
     if (generator.load_config_from_file("/config.json") == 0) {
       Serial.println("⚠️ Конфиг не найден, создаем пример...");
@@ -160,7 +155,7 @@ void setup() {
       return;
     }
 
-    // ⭐ ПОКАЗЫВАЕМ ЗАГРУЖЕННЫЕ МОДЕЛИ
+    // ПОКАЗЫВАЕМ ЗАГРУЖЕННЫЕ МОДЕЛИ
     if (generator.getAPIModelsNamesCount() > 0) {
       Serial.println("\n📋 Доступные модели:");
       for (uint8_t i = 0; i < generator.getAPIModelsNamesCount(); i++) {
