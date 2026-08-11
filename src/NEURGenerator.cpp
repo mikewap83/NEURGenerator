@@ -590,7 +590,7 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
 
       if (flags.useloges) Serial.println("🔓 Бесплатный режим: минимальные заголовки");
     }
-    // ⭐ ПЛАТНЫЙ РЕЖИМ - полные заголовки
+    // ПЛАТНЫЙ РЕЖИМ - полные заголовки
     else {
       if (!flags.repeated && sk_secret[0] != '\0' && strncmp(sk_secret, "Bearer ", 7) == 0) {
         headers.add("Authorization", sk_secret);
@@ -1251,7 +1251,7 @@ bool NEURGenerator::ParserTranslate(gson::Parser& json) {
     }
   }
 
-  // ⭐ Очищаем буфер перед каждым использованием
+  // Очищаем буфер перед каждым использованием
   memset(translate, 0, sz_translate);
 
   // 1. Пытаемся получить перевод через JSON парсер
@@ -1503,7 +1503,6 @@ bool NEURGenerator::ParserModels(gson::Parser& json) {
 
     WDT_eTimeout(false);
 
-    // ⭐ ИЗМЕНЕНО: используем "title" вместо "description"
     if (json[i]["name"].c_str()) {
       strncpy(_names, json[i]["name"].c_str(), sz_model_names - 1);
       _names[sz_model_names - 1] = '\0';
@@ -1515,7 +1514,6 @@ bool NEURGenerator::ParserModels(gson::Parser& json) {
     }
 
     if (json[i]["pricing"]["completionImageTokens"].c_str()) {
-      // ⭐ ИЗМЕНЕНО: парсим как double и форматируем с 4 знаками
       double price = atof(json[i]["pricing"]["completionImageTokens"].c_str());
       snprintf(_price, sz_model_price, "%.4f", price);
     } else {
@@ -1873,7 +1871,6 @@ bool NEURGenerator::send_request() {
   }
 
   // Проверяем пинг сервера
-  // ⭐ ВЫБИРАЕМ ХОСТ ДЛЯ ПИНГА
   const char* ping_host = flags.api_freely ? POLLIN_FREE : POLLIN_HOST;
   bool ok_pings = getPingServer(ping_host);
   if (!ok_pings) {
@@ -2006,7 +2003,7 @@ bool NEURGenerator::stop_receive() {
   memset(url_images, 0, sz_url_images);
   neur_timer.stop();
 
-  // ⭐ ПРОВЕРКА: ТОЛЬКО ЕСЛИ ГЕНЕРАЦИЯ ДЕЙСТВИТЕЛЬНО ИДЕТ
+  // ТОЛЬКО ЕСЛИ ГЕНЕРАЦИЯ ДЕЙСТВИТЕЛЬНО ИДЕТ
   if (isGenerating() && _str_generations > 0) {
     // Как при ошибках сервера
     _end_generations = SafeMillis(_str_generations, millis());
