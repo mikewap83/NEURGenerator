@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <LittleFS.h>
 #include <functional>
 #include <algorithm>
 #include <vector>
@@ -16,6 +17,7 @@
 
 namespace NEURGeneratorConstants {
 constexpr char     POLLIN_HOST[] = "gen.pollinations.ai";
+constexpr char     POLLIN_FREE[] = "image.pollinations.ai";
 constexpr uint16_t POLLIN_PORT   =  443;
 constexpr uint16_t POLLIN_PERIOD = 5000;
 
@@ -23,6 +25,9 @@ constexpr char     TRANS_HOST[]  = "api.mymemory.translated.net";
 constexpr uint16_t TRANS_PORT    =  443;
 
 constexpr uint16_t WDT_SURPLUS   = 20000;
+constexpr uint16_t TIME_PERIOD   =  5000;
+constexpr uint16_t WAIT_PERIOD   = 15000;
+constexpr uint16_t STAY_PERIOD   =  2000;
 
 constexpr uint16_t PING_DELAYS   =   500;
 constexpr uint8_t  PING_TRYING   =     5;
@@ -42,21 +47,25 @@ constexpr size_t   sz_eng_prompt =  2048;
 
 constexpr size_t   sz_enc_prompt =  8192;
 constexpr size_t   sz_enc_denial =  2048;
+constexpr size_t   sz_JsonBuffer =  4096;
 
 constexpr size_t  sz_api_models  =    32;
 constexpr size_t  sz_api_pollen  =    32;
 constexpr size_t  sz_model_names =   256;
 constexpr size_t  sz_model_title =   512;
 constexpr size_t  sz_model_price =   128;
+
+constexpr size_t  BUF_EXPAND_INT =  65536;
+constexpr size_t  BUF_EXPAND_MAX = 786432;
 }
 
 #define API_POLLEN_NO_DATA    "нет данных"
 #define API_NO_ACCESS         "нет доступа"
 #define API_ERROR_JSON        "ошибка чтения"
 
-#define API_MODELS_NAMES      "flux"
-#define API_MODELS_TITLE      "Flux Schnell"
-#define API_MODELS_PRICE      "0.001"
+#define API_MODELS_NAMES      "dreamshaper"
+#define API_MODELS_TITLE      "DreamShaper 8 LCM"
+#define API_MODELS_PRICE      "0.0001"
 #define API_MODELS_COUNT      5
 
 using namespace NEURGeneratorConstants;
@@ -74,33 +83,41 @@ class NEURGenerator {
 
     enum class Status : uint8_t {
       OK_INITIALIZATION_API,     // 0 - инициализация
-      OK_PREPARING_DATA    ,     // 1 - подготовка данных
-      OK_READY_TO_SEND     ,     // 2 - готов к отправке
-      OK_SENDING_ATTEMPT   ,     // 3 - попытка отправки
-      OK_SENDING_REQUEST   ,     // 4 - отправка запроса
-      OK_WAITING_FOR_RESULT,     // 5 - ожидание результата
-      OK_GENERATING_READILY,     // 6 - готово
-      OK_TRANSLATE         ,     // 7 - перевод промта
-      OK_DOWNLOADING       ,     // 8 - загрузка картинки
-      GET_API_POLLEN       ,     // 9 - загрузка баланса
-      GET_API_POLLEN_OK    ,     // 10 - загрузка баланса успех
-      GET_API_POLLEN_ERR   ,     // 11 - загрузка баланса ошибка
-      GET_API_MODELS       ,     // 12 - загрузка моделей
-      GET_API_MODELS_OK    ,     // 13 - загрузка моделей успех
-      GET_API_MODELS_ERR   ,     // 14 - загрузка моделей ошибка
+      OK_WAITING_COMMAND   ,     // 1 - ожидание команды
+      OK_PREPARING_DATA    ,     // 2 - подготовка данных
 
-      ERROR_REQUESTS       ,     // 15 - ошибка отправки запроса
-      ERROR_RESPONSE       ,     // 16 - ошибка получения ответа
-      ERROR_AIGENERATION   ,     // 17 - ошибка AI генерации
-      ERROR_RECEIVING      ,     // 18 - ошибка получения данных
-      ERROR_DECODINGS      ,     // 19 - ошибка декодирования
-      ERROR_CONNECTION     ,     // 20 - ошибка подключения
-      ERROR_INITMEMORY     ,     // 21 - ошибка памяти PSRAM
-      ERROR_OVERLOAD       ,     // 22 - Слишком много запросов (429)
-      ERROR_AUTHENTICATE   ,     // 23 - Слишком много запросов (401-403)
-      ERROR_UNAVAILABLE    ,     // 24 - Сервер недоступен (500)
-      ERROR_CONVERT        ,     // 25 - Ошибка перевода
-      ERROR_CONVERT_LIMIT        // 26 - Лимит переводов
+      OK_SENDING_REQUEST   ,     // 3 - отправка запроса
+      OK_SENDING_ATTEMPT   ,     // 4 - попытка отправки
+      OK_RECEIVING_REQUEST ,     // 5 - получение запроса
+      OK_RECEIVING_ATTEMPT ,     // 6 - получение ответа
+
+      OK_WAITING_FOR_RESULT,     // 7 - ожидание результата
+      OK_GENERATING_READILY,     // 8 - готово
+      OK_TRANSLATE         ,     // 9 - перевод промта
+      OK_DOWNLOADING       ,     // 10 - загрузка картинки
+      OK_RETRY_DOWNLOADING ,     // 11 - повторная загрузка
+      GET_API_POLLEN       ,     // 12 - загрузка баланса
+      GET_API_POLLEN_OK    ,     // 13 - загрузка баланса успех
+      GET_API_POLLEN_ERR   ,     // 14 - загрузка баланса ошибка
+      GET_API_MODELS       ,     // 15 - загрузка моделей
+      GET_API_MODELS_OK    ,     // 16 - загрузка моделей успех
+      GET_API_MODELS_ERR   ,     // 17 - загрузка моделей ошибка
+
+      ERROR_REQUESTS       ,     // 18 - ошибка отправки запроса
+      ERROR_RESPONSE       ,     // 19 - ошибка получения ответа
+      ERROR_AIGENERATION   ,     // 20 - ошибка AI генерации
+      ERROR_RECEIVING      ,     // 21 - ошибка получения данных
+      ERROR_DECODINGS      ,     // 22 - ошибка декодирования
+      ERROR_CONNECTION     ,     // 23 - ошибка подключения
+      ERROR_INITMEMORY     ,     // 24 - ошибка памяти PSRAM
+      ERROR_OVERLOAD       ,     // 25 - ошибка много запросов (429)
+      ERROR_AUTHENTICATE   ,     // 26 - ошибка авторизации (401)
+      ERROR_BALANCEBUDGET  ,     // 27 - ошибка недостаточно баланса (402)
+      ERROR_ACCESSDENIED   ,     // 28 - ошибка доступа (403)
+      ERROR_LOADEDOLDIMAGES,     // 29 - изображение недоступно
+      ERROR_UNAVAILABLE    ,     // 30 - Сервер недоступен (500)
+      ERROR_CONVERT        ,     // 31 - Ошибка перевода
+      ERROR_CONVERT_LIMIT        // 32 - Лимит переводов
     };
 
     enum class APILevels : uint8_t {
@@ -116,13 +133,20 @@ class NEURGenerator {
     };
 
     typedef std::function<void()> RenderRunCallback;
+    typedef std::function<void()> RenderTftCallback;
     typedef std::function<void()> RenderEndCallback;
     typedef std::function<void()> RenderErrCallback;
     typedef std::function<void()> RenderEngCallback;
     typedef std::function<void()> RenderUndCallback;
+    typedef std::function<void()> RenderRetCallback;
+    typedef std::function<void()> RenderDelCallback;
 
     void onRenderRun(RenderRunCallback cb) {
       _run_cb = cb;
+    }
+
+    void onRenderTft(RenderTftCallback cb) {
+      _tft_cb = cb;
     }
 
     void onRenderEnd(RenderEndCallback cb) {
@@ -141,9 +165,22 @@ class NEURGenerator {
       _und_cb = cb;
     }
 
+    void onRenderRet(RenderRetCallback cb) {
+      _ret_cb = cb;
+    }
+
+    void onRenderDel(RenderDelCallback cb) {
+      _del_cb = cb;
+    }
+
     // Конструктор
     NEURGenerator() {
       self = this;
+
+      for (uint8_t i = 0; i < API_MODELS_COUNT; ++i) {
+        isProgressive[i].model = 0;
+        isProgressive[i]._flag = 0;
+      }
 
       setVAL();
     }
@@ -215,6 +252,7 @@ class NEURGenerator {
       memset(temp_models.price, 0, 64);
 
       state_gen = Status::OK_INITIALIZATION_API;
+      state_upd = false;
     }
 
     void setWDT(const uint16_t& wdt_timeout = 5000, esp_task_wdt_config_t* wdt_config = nullptr) {
@@ -225,9 +263,6 @@ class NEURGenerator {
       }
     }
 
-    void setUseHeads(const bool& use) {
-      flags.useheads = use;
-    }
     void setUsePings(const bool& use) {
       flags.usepings = use;
     }
@@ -236,6 +271,10 @@ class NEURGenerator {
     }
     void setUseLoges(const bool& use) {
       flags.useloges = use;
+    }
+
+    void setUseScreen(const bool& use) {
+      flags.usescreen = use;
     }
 
     void setAPINumber(const uint8_t _api_number = 0) {
@@ -285,6 +324,18 @@ class NEURGenerator {
           api_scales = APIScales::SCALE_LOW   ;
           break;
       }
+    }
+
+    void setAPIFreely(const bool _api_freely = false) {
+      flags.api_freely = _api_freely;
+    }
+
+    void setAPIAdjust(const bool _api_adjust = false) {
+      flags.api_adjust = _api_adjust;
+    }
+
+    void setAPISwitch(const bool _api_switch = false) {
+      flags.api_switch = _api_switch;
     }
 
     void setAPIEnhanc(const bool _api_enhanc = false) {
@@ -351,6 +402,10 @@ class NEURGenerator {
 
     bool getApiModels(const char* _sk_secret);  // запрос моделей
     bool ParserModels(gson::Parser& json);
+
+    uint8_t load_config_from_file(const char* filename);
+    bool    create_example_config(const char* filename);
+    uint8_t load_config(const char* jsonData, size_t jsonSize);
 
     const char* getPollen() const {
       return api_pollen;  // возвращает строку с балансом
@@ -444,11 +499,19 @@ class NEURGenerator {
 
     const char* getAPIScalesDisplay() {
       switch (api_scales) {
-        case APIScales::SCALE_LOW   : return "480x320";
-        case APIScales::SCALE_MEDIUM: return "720x480";
-        case APIScales::SCALE_HIGH  : return "960x640";
-        default                     : return "480x320";
+        case APIScales::SCALE_LOW   : return "маленькие";
+        case APIScales::SCALE_MEDIUM: return "средние"  ;
+        case APIScales::SCALE_HIGH  : return "большие"  ;
+        default                     : return "маленькие";
       }
+    }
+
+    const char* getAPILevelsSelect() {
+      return "низкое;среднее;высокое";
+    }
+
+    const char* getAPIScalesSelect() {
+      return "маленькие;средние;большие";
     }
 
     const char* getAPIModelsString() {
@@ -465,150 +528,190 @@ class NEURGenerator {
     }
 
     const char* getAPIScalesString() {
+      static char _scale_buffer[32];
+
+      // ДЛЯ МОДЕЛЕЙ С ВКЛЮЧЁННЫМ МАСШТАБИРОВАНИЕМ
+      if (flags.api_adjust) {
+        uint16_t _requestW = 0;
+        uint16_t _requestH = 0;
+        uint16_t max_dimensionW = 0;
+        uint16_t max_dimensionH = 0;
+
+        // Пытаемся получить размеры из конфига
+        if (getModelScale(api_models, (uint8_t)api_scales, _requestW, _requestH, max_dimensionW, max_dimensionH)) {
+          snprintf(_scale_buffer, sizeof(_scale_buffer), "width=%d&height=%d", _requestW, _requestH);
+          return _scale_buffer;
+        }
+
+        // ❌ Не нашли в конфиге - используем fallback
+        // FALLBACK: FLUX
+        if (strcmp(api_models, "flux") == 0) {
+          switch (api_scales) {
+            case APIScales::SCALE_LOW   : return "width=512&height=384" ;
+            case APIScales::SCALE_MEDIUM: return "width=768&height=576" ;
+            case APIScales::SCALE_HIGH  : return "width=1024&height=768";
+            default                     : return "width=512&height=384" ;
+          }
+        }
+        // FALLBACK: SANA
+        else if (strcmp(api_models, "sana") == 0) {
+          switch (api_scales) {
+            case APIScales::SCALE_LOW   : return "width=480&height=320";
+            case APIScales::SCALE_MEDIUM: return "width=528&height=352";
+            case APIScales::SCALE_HIGH  : return "width=576&height=384";
+            default                     : return "width=480&height=320";
+          }
+        }
+        // FALLBACK: DREAMSHAPER
+        else if (strcmp(api_models, "dreamshaper") == 0) {
+          switch (api_scales) {
+            case APIScales::SCALE_LOW   : return "width=480&height=320";
+            case APIScales::SCALE_MEDIUM: return "width=528&height=352";
+            case APIScales::SCALE_HIGH  : return "width=576&height=384";
+            default                     : return "width=480&height=320";
+          }
+        }
+        // FALLBACK: ZIMAGE (обычный режим)
+        else {
+          switch (api_scales) {
+            case APIScales::SCALE_LOW   : return "width=480&height=320";
+            case APIScales::SCALE_MEDIUM: return "width=720&height=480";
+            case APIScales::SCALE_HIGH  : return "width=960&height=640";
+            default                     : return "width=480&height=320";
+          }
+        }
+      }
+
+      // ПРОВЕРКА ПРОГРЕССИВНОГО JPEG
+      if (isProgressive[api_number]._flag) {
+        snprintf(_scale_buffer, sizeof(_scale_buffer), "width=%d&height=%d",
+                 480 * 2, 320 * 2);
+        return _scale_buffer;
+      }
+
+      // ОБЫЧНЫЙ РЕЖИМ
       switch (api_scales) {
         case APIScales::SCALE_LOW   : return "width=480&height=320";
         case APIScales::SCALE_MEDIUM: return "width=720&height=480";
         case APIScales::SCALE_HIGH  : return "width=960&height=640";
-        default                    : return "width=480&height=320";
+        default                     : return "width=480&height=320";
       }
     }
 
     void setStateStatus(Status new_state);
+
+    // НОВЫЙ МЕТОД: проверка обновления состояния
+    bool getStateUpdate() {
+      if (state_upd) {
+        state_upd = false;
+        return true;
+      }
+      return false;
+    }
+
+    uint8_t getStateNumber() const {
+      return (uint8_t)state_gen;
+    }
+
     const char* getStateStatus(bool expand = false) {
       switch (state_gen) {
-        case Status::OK_INITIALIZATION_API:
-          return (!expand) ? "..."                         : "инициализация API нейросети"              ;
+        case Status::OK_INITIALIZATION_API:          return expand ? "инициализация API нейросети"                : "..."                   ;
+        case Status::OK_WAITING_COMMAND   :          return expand ? "ожидание команды для нейросети"             : "ожидание команды"      ;
+        case Status::OK_PREPARING_DATA    :          return expand ? "подготовка данных для отправки запроса"     : "подготовка данных"     ;
 
-        case Status::OK_PREPARING_DATA:
-          return (!expand) ? "подготовка данных"           : "подготовка данных для запроса"            ;
-
-        case Status::OK_READY_TO_SEND:
-          return (!expand) ? "готово к отправке"           : "данные подготовлены, ожидание отправки"   ;
-
-        case Status::OK_SENDING_ATTEMPT:
+        case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке" ;
+        case Status::OK_SENDING_ATTEMPT   :
           snprintf(wrk_status, sz_wrk_status,
-                   (!expand) ? "отправка запроса %2d/%2d"  : "попытка отправки запроса к нейросети",
+                   expand ? "отправка запроса в нейросеть (попытка %2d/%2d)" : "отправка (попытка %2d/%2d)",
                    attempt_network_count + 1, try_request);
           return wrk_status;
 
-        case Status::OK_SENDING_REQUEST:
-          return (!expand) ? "отправка запроса"            : "отправка запроса в нейросеть"             ;
+        case Status::OK_RECEIVING_REQUEST :          return expand ? "подготовка к загрузке ответа от нейросети"  : "подготовка к загрузке" ;
+        case Status::OK_RECEIVING_ATTEMPT :
+          snprintf(wrk_status, sz_wrk_status,
+                   expand ? "загрузка ответа от нейросети (попытка %2d/%2d)" : "загрузка (попытка %2d/%2d)",
+                   attempt_network_count + 1, try_receive);
+          return wrk_status;
 
-        case Status::OK_WAITING_FOR_RESULT:
-          return (!expand) ? "ожидание результата"         : "ожидание ответа от нейросети"             ;
-
-        case Status::OK_GENERATING_READILY:
-          return (!expand) ? "готово"                      : "генерация завершена успешно"              ;
-
-        case Status::OK_TRANSLATE:
-          return (!expand) ? "перевод промпта"             : "перевод промпта на английский язык"       ;
-
-        case Status::OK_DOWNLOADING:
-          return (!expand) ? "загрузка изображения"        : "загрузка сгенерированого изображения"     ;
-
-        case Status::GET_API_POLLEN:
-          return (!expand) ? "обновление баланса"          : "обновление остатка баланса"               ;
-
-        case Status::GET_API_POLLEN_OK:
-          return (!expand) ? "успешное обновление баланса" : "успешное обновление баланса"              ;
-
-        case Status::GET_API_POLLEN_ERR:
-          return (!expand) ? "ошибка обновления баланса"   : "ошибка обновления баланса"                ;
-
-        case Status::GET_API_MODELS:
-          return (!expand) ? "обновление моделей"          : "обновление доступных моделей"             ;
-
-        case Status::GET_API_MODELS_OK:
-          return (!expand) ? "успешное обновление моделей" : "успешное обновление моделей"              ;
-
-        case Status::GET_API_MODELS_ERR:
-          return (!expand) ? "ошибка обновления моделей"   : "ошибка обновления моделей"                ;
-
-        case Status::ERROR_REQUESTS:
-          return (!expand) ? "ошибка отправки запроса"     : "не удалось отправить запрос к нейросети"  ;
-
-        case Status::ERROR_RESPONSE:
-          return (!expand) ? "ошибка получения ответа"     : "нейросеть вернула некорректный ответ"     ;
-
-        case Status::ERROR_AIGENERATION:
-          return (!expand) ? "ошибка AI генерации"         : "нейросеть не смогла сгенерировать контент";
-
-        case Status::ERROR_RECEIVING:
-          return (!expand) ? "ошибка получения данных"     : "проблема при получении данных от сервера" ;
-
-        case Status::ERROR_DECODINGS:
-          return (!expand) ? "ошибка декодирования"        : "сбой при декодировании изображения"       ;
-
-        case Status::ERROR_CONNECTION:
-          return (!expand) ? "ошибка подключения"          : "нет подключения к интернету"              ;
-
-        case Status::ERROR_INITMEMORY:
-          return (!expand) ? "ошибка памяти PSRAM"         : "недостаточно памяти для генерации"        ;
-
-        case Status::ERROR_OVERLOAD:
-          return (!expand) ? "слишком частые запросы"      : "слишком частые запросы, подождите"        ;
-
-        case Status::ERROR_AUTHENTICATE:
-          return (!expand) ? "ошибка авторизации"          : "ошибка авторизации API, проверьте ключ"   ;
-
-        case Status::ERROR_UNAVAILABLE:
-          return (!expand) ? "серверы недоступны"          : "серверы генерации недоступны"             ;
-
-        case Status::ERROR_CONVERT:
-          return (!expand) ? "ошибка перевода"             : "ошибка при переводе промпта"              ;
-
-        case Status::ERROR_CONVERT_LIMIT:
-          return (!expand) ? "лимит переводов"             : "достигнут лимит доступных переводов"      ;
-
-        default:
-          return (!expand) ? "неизвестный статус"          : "неизвестна, попробуйте позже"             ;
+        case Status::OK_WAITING_FOR_RESULT:          return expand ? "ожидание ответа от нейросети"               : "ожидание результата"   ;
+        case Status::OK_GENERATING_READILY:          return expand ? "генерация завершена успешно"                : "изображение получено"  ;
+        case Status::OK_TRANSLATE         :          return expand ? "перевод промпта на английский язык"         : "перевод промпта"       ;
+        case Status::OK_DOWNLOADING       :          return expand ? "получение сгенерированного изображения"     : "получение изображения" ;
+        case Status::OK_RETRY_DOWNLOADING :          return expand ? "повторное получение изображения"            : "повторное получение"   ;
+        case Status::GET_API_POLLEN       :          return expand ? "обновление остатка баланса"                 : "обновление баланса"    ;
+        case Status::GET_API_POLLEN_OK    :          return expand ? "успешное обновление баланса"                : "баланс обновлён"       ;
+        case Status::GET_API_POLLEN_ERR   :          return expand ? "ошибка обновления баланса"                  : "ошибка баланса"        ;
+        case Status::GET_API_MODELS       :          return expand ? "обновление доступных моделей"               : "обновление моделей"    ;
+        case Status::GET_API_MODELS_OK    :          return expand ? "успешное обновление моделей"                : "модели обновлены"      ;
+        case Status::GET_API_MODELS_ERR   :          return expand ? "ошибка обновления моделей"                  : "ошибка моделей"        ;
+        case Status::ERROR_REQUESTS       :          return expand ? "не удалось отправить запрос к нейросети"    : "ошибка отправки"       ;
+        case Status::ERROR_RESPONSE       :          return expand ? "нейросеть вернула некорректный ответ"       : "ошибка ответа"         ;
+        case Status::ERROR_AIGENERATION   :          return expand ? "нейросеть не смогла сгенерировать контент"  : "ошибка AI"             ;
+        case Status::ERROR_RECEIVING      :          return expand ? "проблема при получении данных от сервера"   : "ошибка получения"      ;
+        case Status::ERROR_DECODINGS      :          return expand ? "сбой при декодировании изображения"         : "ошибка декодирования"  ;
+        case Status::ERROR_CONNECTION     :          return expand ? "нет подключения к интернету"                : "нет связи"             ;
+        case Status::ERROR_INITMEMORY     :          return expand ? "недостаточно памяти PSRAM для генерации"    : "нет PSRAM"             ;
+        case Status::ERROR_OVERLOAD       :          return expand ? "слишком частые запросы, подождите"          : "перегрузка"            ;
+        case Status::ERROR_AUTHENTICATE   :          return expand ? "ошибка ключа доступа, проверьте ключ API"   : "ошибка ключа доступа"  ;
+        case Status::ERROR_BALANCEBUDGET  :          return expand ? "ошибка недостаточный баланс пыльцы"         : "недостаточный баланс"  ;
+        case Status::ERROR_ACCESSDENIED   :          return expand ? "ошибка доступа нет необходимых разрешений"  : "доступ запрещен"       ;
+        case Status::ERROR_LOADEDOLDIMAGES:          return expand ? "срок хранения изображения истек"            : "изображение недоступно";
+        case Status::ERROR_UNAVAILABLE    :          return expand ? "серверы генерации недоступны"               : "сервер не доступен"    ;
+        case Status::ERROR_CONVERT        :          return expand ? "ошибка при переводе промпта"                : "ошибка перевода"       ;
+        case Status::ERROR_CONVERT_LIMIT  :          return expand ? "достигнут лимит доступных переводов"        : "лимит переводов"       ;
+        default                           :          return expand ? "неизвестна, попробуйте позже"               : "неизвестно"            ;
       }
+    }
+
+    bool isWorkApiNow() {
+      return state_gen == Status::OK_PREPARING_DATA
+             || state_gen == Status::OK_SENDING_REQUEST
+             || state_gen == Status::OK_SENDING_ATTEMPT
+             || state_gen == Status::OK_RECEIVING_REQUEST
+             || state_gen == Status::OK_RECEIVING_ATTEMPT
+             || state_gen == Status::OK_WAITING_FOR_RESULT
+             || state_gen == Status::OK_TRANSLATE;
     }
 
     bool isGenerating() {
-      return state_gen == Status::OK_PREPARING_DATA ||
-             state_gen == Status::OK_READY_TO_SEND ||
-             state_gen == Status::OK_SENDING_ATTEMPT ||
-             state_gen == Status::OK_SENDING_REQUEST ||
-             state_gen == Status::OK_WAITING_FOR_RESULT ||
-             state_gen == Status::OK_TRANSLATE;
+      return state_gen == Status::OK_PREPARING_DATA
+             || state_gen == Status::OK_SENDING_REQUEST
+             || state_gen == Status::OK_SENDING_ATTEMPT
+             || state_gen == Status::OK_RECEIVING_REQUEST
+             || state_gen == Status::OK_RECEIVING_ATTEMPT
+             || state_gen == Status::OK_WAITING_FOR_RESULT
+             || state_gen == Status::OK_TRANSLATE;
     }
 
     bool isRequestError() const {
-      return state_gen == Status::ERROR_AIGENERATION ||
-             state_gen == Status::ERROR_CONNECTION ||
-             state_gen == Status::ERROR_UNAVAILABLE ||
-             state_gen == Status::ERROR_REQUESTS;
+      return state_gen == Status::ERROR_AIGENERATION
+             || state_gen == Status::ERROR_CONNECTION
+             || state_gen == Status::ERROR_UNAVAILABLE
+             || state_gen == Status::ERROR_REQUESTS;
     }
 
     bool isReceiveError() const {
-      return state_gen == Status::ERROR_REQUESTS ||
-             state_gen == Status::ERROR_RESPONSE ||
-             state_gen == Status::ERROR_RECEIVING ||
-             state_gen == Status::ERROR_DECODINGS ||
-             state_gen == Status::ERROR_OVERLOAD ||
-             state_gen == Status::ERROR_AUTHENTICATE ||
-             state_gen == Status::ERROR_UNAVAILABLE;
+      return state_gen == Status::ERROR_REQUESTS
+             || state_gen == Status::ERROR_RESPONSE
+             || state_gen == Status::ERROR_RECEIVING
+             || state_gen == Status::ERROR_DECODINGS
+             || state_gen == Status::ERROR_OVERLOAD
+             || state_gen == Status::ERROR_AUTHENTICATE
+             || state_gen == Status::ERROR_BALANCEBUDGET
+             || state_gen == Status::ERROR_ACCESSDENIED
+             || state_gen == Status::ERROR_UNAVAILABLE;
     }
 
     int8_t isPollenState() {
-      if (state_gen == Status::GET_API_POLLEN_OK) {
-        return 1;
-      } else if (state_gen == Status::GET_API_POLLEN_ERR) {
-        return -1;
-      } else {
-        return 0;
-      }
+      if (state_gen == Status::GET_API_POLLEN_OK ) return  1;
+      if (state_gen == Status::GET_API_POLLEN_ERR) return -1;
+      return 0;
     }
 
     int8_t isModelsState() {
-      if (state_gen == Status::GET_API_MODELS_OK) {
-        return 1;
-      } else if (state_gen == Status::GET_API_MODELS_ERR) {
-        return -1;
-      } else {
-        return 0;
-      }
+      if (state_gen == Status::GET_API_MODELS_OK ) return  1;
+      if (state_gen == Status::GET_API_MODELS_ERR) return -1;
+      return 0;
     }
 
     uint16_t getGeneration() {
@@ -651,15 +754,28 @@ class NEURGenerator {
       jpegDataSum = 0;
     }
 
+    void setStateErrDecoder() {
+      setStateStatus(Status::ERROR_DECODINGS);
+    }
+
+    void setStateErrReceive() {
+      setStateStatus(Status::ERROR_RECEIVING);
+    }
+
+    void setStateErrResponse() {
+      setStateStatus(Status::ERROR_RESPONSE);
+    }
+
     void tick(bool WiFiState);
 
-    Status state_gen = Status::OK_INITIALIZATION_API;//статус генерации
+    Status state_gen = Status::OK_INITIALIZATION_API;
+    bool state_upd = false;
 
     uint32_t created_image = 0;
 
-    char*           jpegDataBuf = nullptr;
-    const size_t sz_jpegDataBuf =  262144;
-    size_t          jpegDataSum =  0;
+    char*     jpegDataBuf = nullptr;
+    size_t sz_jpegDataBuf =  262144;
+    size_t    jpegDataSum =       0;
 
     static uint8_t* http_psram_buffer;
 
@@ -694,6 +810,26 @@ class NEURGenerator {
       char* title = (char*)heap_caps_malloc(sz_model_title, MALLOC_CAP_SPIRAM);
       char* price = (char*)heap_caps_malloc(sz_model_price, MALLOC_CAP_SPIRAM);
     } json_models;
+
+    struct size_models {
+      uint8_t  size_level;
+      uint16_t dimensionW;
+      uint16_t dimensionH;
+    };
+
+    struct size_config {
+      char*   names = nullptr;
+      uint16_t max_dimensionW;
+      uint16_t max_dimensionH;
+
+      size_models scales[3];
+      uint8_t  scales_count;
+    };
+
+    struct {
+      uint8_t model;
+      bool    _flag;
+    } isProgressive[API_MODELS_COUNT];
 
     bool isRussianText(const char* text);
     bool isEnglishText(const char* text);
@@ -730,10 +866,15 @@ class NEURGenerator {
 
       bool usetasks  : 1;
       bool useloges  : 1;
-      bool useheads  : 1;
       bool usepings  : 1;
-      bool useolder  : 1;
       bool critical  : 1;
+
+      bool usescreen : 1;
+      bool repeated  : 1;
+	  
+      bool api_freely: 1;
+      bool api_adjust: 1;
+      bool api_switch: 1;
     } flags;
 
     struct {
@@ -746,24 +887,38 @@ class NEURGenerator {
     uint32_t _triggerMs = 0;
     esp_task_wdt_config_t* _wdt_config = nullptr;
 
+    uint32_t last_apicommands = 0;
     uint32_t _str_generations = 0;
     uint32_t _end_generations = 0;
 
     RenderRunCallback _run_cb = nullptr;
+    RenderTftCallback _tft_cb = nullptr;
     RenderEndCallback _end_cb = nullptr;
     RenderErrCallback _err_cb = nullptr;
     RenderEngCallback _eng_cb = nullptr;
     RenderUndCallback _und_cb = nullptr;
+    RenderRetCallback _ret_cb = nullptr;
+    RenderDelCallback _del_cb = nullptr;
 
     IPAddress  _hostIP;
     char*    JsonBuffer;    const size_t sz_JsonBuffer  =  4096;
+
+    size_config* _models_config = nullptr;
+    uint8_t      _model_configs = 0;
+    bool         _config_loaded = 0;
 
     // static
     static NEURGenerator* self;
 
     uTimer16<millis> neur_timer;
 
-    // Функция для URL-кодирования (упрощенная версия)
+    bool getModelScale(const char* model_name, uint8_t level,
+                       uint16_t& _requestW, uint16_t& _requestH,
+                       uint16_t& max_dimensionW, uint16_t& max_dimensionH);
+
+    bool ExpandBuffer(char*& buffer, size_t& current_size, size_t needed,
+                      size_t expand_step, size_t max_size);
+
     void url_encode(const char *src, char *dest) {
       const char *hex = "0123456789ABCDEF";
       while (*src) {
