@@ -39,12 +39,12 @@ NEURGenerator generator;
 // Счетчик для имен файлов
 int imageCounter = 0;
 
-// ⭐ CALLBACK при начале генерации
+// CALLBACK при начале генерации
 void onRenderRun() {
   Serial.println("🎨 Начало генерации...");
 }
 
-// ⭐ CALLBACK при успешном завершении генерации
+// CALLBACK при успешном завершении генерации
 void onRenderEnd() {
   Serial.println("✅ Генерация завершена!");
 
@@ -77,23 +77,23 @@ void onRenderEnd() {
   }
 }
 
-// ⭐ CALLBACK при ошибке генерации
+// CALLBACK при ошибке генерации
 void onRenderErr() {
   Serial.print("❌ Ошибка генерации: ");
   Serial.println(generator.getStateStatus(true));
 }
 
-// ⭐ CALLBACK при принудительной остановке
+// CALLBACK при принудительной остановке
 void onRenderUnd() {
   Serial.println("⏸️ Генерация прервана");
 }
 
-// ⭐ CALLBACK при успешном переводе
+// CALLBACK при успешном переводе
 void onRenderEng() {
   Serial.println("🌐 Перевод выполнен");
 }
 
-// ⭐ НОВЫЕ CALLBACK'и
+// CALLBACK'и
 void onRenderTft() {
   Serial.println("🖥️ Изображение готово для TFT");
 }
@@ -106,7 +106,7 @@ void onRenderDel() {
   Serial.println("🗑️ Изображение удалено (недоступно)");
 }
 
-// ⭐ Callback для проверки JPEG
+// Callback для проверки JPEG
 int JPEGCheck(JPEGDRAW *pDraw) {
   return 1; // Просто пропускаем
 }
@@ -117,7 +117,6 @@ void setup() {
 
   Serial.println("\n=== NEURGenerator 2.0.0 - SD Card Save Example ===");
 
-  // ⭐ ИНИЦИАЛИЗАЦИЯ LittleFS (для config.json)
   if (!LittleFS.begin()) {
     Serial.println("❌ Ошибка монтирования LittleFS");
     return;
@@ -144,33 +143,33 @@ void setup() {
   generator.setKeySecret(apiKey, privateKey);
   generator.setMyMemmory(myMemoryEmail);
 
-  // ⭐ Устанавливаем callback'и
+  // Устанавливаем callback'и
   generator.onRenderRun(onRenderRun);
   generator.onRenderEnd(onRenderEnd);
   generator.onRenderErr(onRenderErr);
   generator.onRenderUnd(onRenderUnd);
   generator.onRenderEng(onRenderEng);
-  generator.onRenderTft(onRenderTft);   // ⭐ НОВЫЙ
-  generator.onRenderRet(onRenderRet);   // ⭐ НОВЫЙ
-  generator.onRenderDel(onRenderDel);   // ⭐ НОВЫЙ
+  generator.onRenderTft(onRenderTft);
+  generator.onRenderRet(onRenderRet);
+  generator.onRenderDel(onRenderDel);
 
   // Настройка параметров
   generator.setUsePings(true);      // Использовать ping
   generator.setUseLoges(true);      // Выводить логи
-  generator.setUseScreen(false);    // ⭐ НОВОЕ: отключить обработку экрана
+  generator.setUseScreen(false);    // отключить обработку экрана
 
-  // ⭐ НОВЫЕ НАСТРОЙКИ API
-  generator.setAPIFreely(false);    // ⭐ платный режим
-  generator.setAPIAdjust(false);    // ⭐ отключить адаптивные размеры
-  generator.setAPISwitch(true);     // ⭐ включить перевод
+  // НАСТРОЙКИ API
+  generator.setAPIFreely(false);    // платный режим
+  generator.setAPIAdjust(false);    // отключить адаптивные размеры
+  generator.setAPISwitch(true);     // включить перевод
 
   // Настройка модели
-  generator.setAPINumber(0);            // индекс модели
+  generator.setAPINumber(0);             // индекс модели
   generator.setAPIModels("dreamshaper"); // модель
-  generator.setAPILevels(1);            // качество (0-низкое, 1-среднее, 2-высокое)
-  generator.setAPIScales(1);            // размер (0-маленький, 1-средний, 2-большой)
-  generator.setAPIEnhanc(false);        // улучшение
-  generator.setAPIFilter(false);        // фильтр
+  generator.setAPILevels(1);             // качество (0-низкое, 1-среднее, 2-высокое)
+  generator.setAPIScales(1);             // размер (0-маленький, 1-средний, 2-большой)
+  generator.setAPIEnhanc(false);         // улучшение
+  generator.setAPIFilter(false);         // фильтр
 
 #if USE_WDT
   generator.setUseTasks(true);      // Разрешить сброс WDT
@@ -204,7 +203,6 @@ void setup() {
     Serial.print("📊 IP адрес: ");
     Serial.println(WiFi.localIP());
 
-    // ⭐⭐ ЗАГРУЖАЕМ КОНФИГ ОДНОЙ СТРОКОЙ!
     Serial.println("\n📦 Загрузка конфига моделей...");
     if (generator.load_config_from_file("/config.json") == 0) {
       Serial.println("⚠️ Конфиг не найден, создаем пример...");
@@ -223,7 +221,6 @@ void setup() {
       Serial.println(generator.getStateStatus(false));
     }
 
-    // ⭐ ПОКАЗЫВАЕМ ЗАГРУЖЕННЫЕ МОДЕЛИ
     if (generator.getAPIModelsNamesCount() > 0) {
       Serial.println("\n📋 Доступные модели:");
       for (uint8_t i = 0; i < generator.getAPIModelsNamesCount(); i++) {
@@ -249,7 +246,6 @@ void setup() {
     for (int i = 0; i < numPrompts; i++) {
       Serial.printf("\n--- Генерация %d/%d ---\n", i + 1, numPrompts);
 
-      // ⭐ data_prepare БЕЗ параметра translate (управляется через setAPISwitch)
       if (!generator.data_prepare(
             prompts[i],           // промпт
             "high quality",       // суффикс
