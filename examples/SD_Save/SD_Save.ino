@@ -1,6 +1,7 @@
 #include <NEURGenerator.h>
 #include <SD.h>
 #include <FS.h>
+#include <LittleFS.h>
 #include <JPEGDEC.h>
 
 // Настройки WiFi
@@ -38,12 +39,12 @@ NEURGenerator generator;
 // Счетчик для имен файлов
 int imageCounter = 0;
 
-// Callback при начале генерации
+// ⭐ CALLBACK при начале генерации
 void onRenderRun() {
   Serial.println("🎨 Начало генерации...");
 }
 
-// Callback при успешном завершении генерации
+// ⭐ CALLBACK при успешном завершении генерации
 void onRenderEnd() {
   Serial.println("✅ Генерация завершена!");
 
@@ -71,28 +72,41 @@ void onRenderEnd() {
       Serial.println("❌ Не удалось создать файл на SD карте");
     }
 
-    // Очищаем буфер но можно и не очищать потом может пригодится
-    //generator.clearImageData();
+    // Очищаем буфер (опционально)
+    // generator.clearImageData();
   }
 }
 
-// Callback при ошибке генерации
+// ⭐ CALLBACK при ошибке генерации
 void onRenderErr() {
   Serial.print("❌ Ошибка генерации: ");
   Serial.println(generator.getStateStatus(true));
 }
 
-// Callback при принудительной остановке
+// ⭐ CALLBACK при принудительной остановке
 void onRenderUnd() {
   Serial.println("⏸️ Генерация прервана");
 }
 
-// Callback при успешном переводе
+// ⭐ CALLBACK при успешном переводе
 void onRenderEng() {
   Serial.println("🌐 Перевод выполнен");
 }
 
-// Callback для проверки JPEG
+// ⭐ НОВЫЕ CALLBACK'и
+void onRenderTft() {
+  Serial.println("🖥️ Изображение готово для TFT");
+}
+
+void onRenderRet() {
+  Serial.println("🔄 Повторная загрузка изображения");
+}
+
+void onRenderDel() {
+  Serial.println("🗑️ Изображение удалено (недоступно)");
+}
+
+// ⭐ Callback для проверки JPEG
 int JPEGCheck(JPEGDRAW *pDraw) {
   return 1; // Просто пропускаем
 }
@@ -101,7 +115,14 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("\n=== NEURGenerator 1.2.5 - SD Card Save Example with Callbacks ===");
+  Serial.println("\n=== NEURGenerator 2.0.0 - SD Card Save Example ===");
+
+  // ⭐ ИНИЦИАЛИЗАЦИЯ LittleFS (для config.json)
+  if (!LittleFS.begin()) {
+    Serial.println("❌ Ошибка монтирования LittleFS");
+    return;
+  }
+  Serial.println("✅ LittleFS смонтирована");
 
   // Инициализация SD карты
   SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
@@ -123,23 +144,41 @@ void setup() {
   generator.setKeySecret(apiKey, privateKey);
   generator.setMyMemmory(myMemoryEmail);
 
-  // Устанавливаем callback'и
+  // ⭐ Устанавливаем callback'и
   generator.onRenderRun(onRenderRun);
   generator.onRenderEnd(onRenderEnd);
   generator.onRenderErr(onRenderErr);
   generator.onRenderUnd(onRenderUnd);
   generator.onRenderEng(onRenderEng);
+  generator.onRenderTft(onRenderTft);   // ⭐ НОВЫЙ
+  generator.onRenderRet(onRenderRet);   // ⭐ НОВЫЙ
+  generator.onRenderDel(onRenderDel);   // ⭐ НОВЫЙ
 
   // Настройка параметров
-  generator.setUseHeads(true);      // Использовать заголовки
   generator.setUsePings(true);      // Использовать ping
   generator.setUseLoges(true);      // Выводить логи
+  generator.setUseScreen(false);    // ⭐ НОВОЕ: отключить обработку экрана
+
+  // ⭐ НОВЫЕ НАСТРОЙКИ API
+  generator.setAPIFreely(false);    // ⭐ платный режим
+  generator.setAPIAdjust(false);    // ⭐ отключить адаптивные размеры
+  generator.setAPISwitch(true);     // ⭐ включить перевод
+
+  // Настройка модели
+  generator.setAPINumber(0);            // индекс модели
+  generator.setAPIModels("dreamshaper"); // модель
+  generator.setAPILevels(1);            // качество (0-низкое, 1-среднее, 2-высокое)
+  generator.setAPIScales(1);            // размер (0-маленький, 1-средний, 2-большой)
+  generator.setAPIEnhanc(false);        // улучшение
+  generator.setAPIFilter(false);        // фильтр
 
 #if USE_WDT
   generator.setUseTasks(true);      // Разрешить сброс WDT
   generator.setWDT(10000, &twdt_config);
+  Serial.println("✅ Библиотека будет сбрасывать WDT");
 #else
   generator.setUseTasks(false);     // Запретить сброс WDT
+  Serial.println("ℹ️ Библиотека не будет трогать WDT");
 #endif
 
   // Настройка таймаутов
@@ -165,6 +204,13 @@ void setup() {
     Serial.print("📊 IP адрес: ");
     Serial.println(WiFi.localIP());
 
+    // ⭐⭐ ЗАГРУЖАЕМ КОНФИГ ОДНОЙ СТРОКОЙ!
+    Serial.println("\n📦 Загрузка конфига моделей...");
+    if (generator.load_config_from_file("/config.json") == 0) {
+      Serial.println("⚠️ Конфиг не найден, создаем пример...");
+      generator.create_example_config("/config.json");
+    }
+
     // Проверяем баланс
     Serial.println("\n💰 Запрос баланса...");
 
@@ -175,6 +221,18 @@ void setup() {
     } else {
       Serial.print("❌ Ошибка баланса: ");
       Serial.println(generator.getStateStatus(false));
+    }
+
+    // ⭐ ПОКАЗЫВАЕМ ЗАГРУЖЕННЫЕ МОДЕЛИ
+    if (generator.getAPIModelsNamesCount() > 0) {
+      Serial.println("\n📋 Доступные модели:");
+      for (uint8_t i = 0; i < generator.getAPIModelsNamesCount(); i++) {
+        Serial.printf("  %d: %s - %s (%s)\n",
+                      i,
+                      generator.getAPIModelsNamesByIndex(i),
+                      generator.getAPIModelsTitleByIndex(i),
+                      generator.getAPIModelsPriceByIndex(i));
+      }
     }
 
     // Массив промптов для генерации
@@ -191,13 +249,12 @@ void setup() {
     for (int i = 0; i < numPrompts; i++) {
       Serial.printf("\n--- Генерация %d/%d ---\n", i + 1, numPrompts);
 
-      // Готовим промпт с переводом
+      // ⭐ data_prepare БЕЗ параметра translate (управляется через setAPISwitch)
       if (!generator.data_prepare(
             prompts[i],           // промпт
-            "high quality",        // суффикс
-            "detailed",            // модификатор
-            "ugly, blurry",        // negative prompt
-            true                   // translate = true (включить перевод)
+            "high quality",       // суффикс
+            "detailed",           // модификатор
+            "ugly, blurry"        // negative prompt
           )) {
         Serial.print("❌ Ошибка подготовки промпта: ");
         Serial.println(generator.getStateStatus(false));
