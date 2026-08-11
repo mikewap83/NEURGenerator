@@ -129,7 +129,7 @@ void loop() {
 
 NEURGenerator generator;
 
-// ⭐ Callback'и
+// Callback'и
 void onRenderRun() {
     Serial.println("🎨 Начало генерации...");
 }
@@ -165,7 +165,7 @@ void setup() {
     generator.onRenderEng(onRenderEng);
     generator.onRenderUnd(onRenderUnd);
     
-    // ⭐ НОВЫЕ НАСТРОЙКИ
+    // НОВЫЕ НАСТРОЙКИ
     generator.setAPISwitch(true);     // Включить перевод
     generator.setAPIFreely(false);    // Платный режим
     generator.setAPIAdjust(false);    // Адаптивные размеры
