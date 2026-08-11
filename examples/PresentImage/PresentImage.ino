@@ -33,20 +33,20 @@ NEURGenerator generator;
 TFT_eSPI tft = TFT_eSPI();
 JPEGDEC jpeg;
 
-// ⭐ Callback для отрисовки JPEG
+// Callback для отрисовки JPEG
 int JPEGDraw(JPEGDRAW *pDraw) {
   tft.pushImage(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, pDraw->pPixels);
   return 1;
 }
 
-// ⭐ CALLBACK при загрузке существующего изображения
+// CALLBACK при загрузке существующего изображения
 void onRenderRun() {
   Serial.println("🎨 Начало загрузки изображения...");
   tft.fillScreen(TFT_BLACK);
   tft.drawString("Loading...", 10, 10);
 }
 
-// ⭐ CALLBACK при успешной загрузке
+// CALLBACK при успешной загрузке
 void onRenderEnd() {
   Serial.println("✅ Изображение загружено!");
 
@@ -77,7 +77,7 @@ void onRenderEnd() {
   }
 }
 
-// ⭐ CALLBACK при ошибке загрузки
+// CALLBACK при ошибке загрузки
 void onRenderErr() {
   Serial.print("❌ Ошибка загрузки: ");
   Serial.println(generator.getStateStatus(true));
@@ -85,19 +85,19 @@ void onRenderErr() {
   tft.drawString("Load Error", 10, 10);
 }
 
-// ⭐ CALLBACK при принудительной остановке
+// CALLBACK при принудительной остановке
 void onRenderUnd() {
   Serial.println("⏸️ Загрузка прервана");
   tft.fillScreen(TFT_ORANGE);
   tft.drawString("Stopped", 10, 10);
 }
 
-// ⭐ CALLBACK при успешном переводе
+// CALLBACK при успешном переводе
 void onRenderEng() {
   Serial.println("🌐 Перевод выполнен");
 }
 
-// ⭐ НОВЫЕ CALLBACK'и (для PresentImage)
+// НОВЫЕ CALLBACK'и (для PresentImage)
 void onRenderTft() {
   Serial.println("🖥️ Изображение готово для TFT");
 }
@@ -143,7 +143,7 @@ void setup() {
   generator.setKeySecret(apiKey, privateKey);
   generator.setMyMemmory(myMemoryEmail);
 
-  // ⭐ Устанавливаем callback'и
+  // Устанавливаем callback'и
   generator.onRenderRun(onRenderRun);
   generator.onRenderEnd(onRenderEnd);
   generator.onRenderErr(onRenderErr);
@@ -158,7 +158,7 @@ void setup() {
   generator.setUseLoges(true);
   generator.setUseScreen(true);
 
-  // ⭐ НАСТРОЙКИ API (для PresentImage не обязательны, но нужны для работы)
+  // (для PresentImage не обязательны, но нужны для работы)
   generator.setAPIFreely(false);
   generator.setAPIAdjust(false);
   generator.setAPISwitch(true);
@@ -199,7 +199,6 @@ void setup() {
     tft.drawString("WiFi OK", 10, 10);
     tft.drawString(WiFi.localIP().toString().c_str(), 10, 30);
 
-    // ⭐⭐ ЗАГРУЖАЕМ КОНФИГ
     Serial.println("\n📦 Загрузка конфига моделей...");
     if (generator.load_config_from_file("/config.json") == 0) {
       Serial.println("⚠️ Конфиг не найден, создаем пример...");
@@ -227,10 +226,9 @@ void setup() {
       return;
     }
 
-    // ⭐⭐⭐ ГЛАВНОЕ: ЗАГРУЗКА СУЩЕСТВУЮЩЕГО ИЗОБРАЖЕНИЯ
+    // ГЛАВНОЕ: ЗАГРУЗКА СУЩЕСТВУЮЩЕГО ИЗОБРАЖЕНИЯ
     // Это может быть URL из истории, из файла или из любого другого источника
 
-    // Пример 1: Загрузка изображения по прямому URL
     const char* imageUrl = "https://gen.pollinations.ai/image/beautiful_sunset?model=dreamshaper&seed=12345";
 
     Serial.println("\n📥 Загрузка изображения по URL:");
@@ -239,7 +237,6 @@ void setup() {
     tft.fillScreen(TFT_BLACK);
     tft.drawString("Loading Image...", 10, 10);
 
-    // ⭐ ВЫЗОВ PresentImage
     generator.PresentImage(imageUrl);
 
     // Ждем завершения загрузки
