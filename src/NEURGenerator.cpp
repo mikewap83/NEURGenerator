@@ -666,9 +666,9 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
     if (try_httpcode != 200) {
       http->~EspInsecureClient();
 
-      if (flags.repeated && try_httpcode == 401) {
+      if (flags.repeated && (try_httpcode == 400 || try_httpcode == 401)) {
         if (flags.useloges) {
-          Serial.println("❌ ОШИБКА 401 ПРИ ПОВТОРНОЙ ЗАГРУЗКЕ: изображение недоступно");
+          Serial.println("❌ ОШИБКА 400-401 ПРИ ПОВТОРНОЙ ЗАГРУЗКЕ: изображение недоступно");
           Serial.println("🛑 Прекращаем все операции с этим изображением");
         }
 
@@ -968,7 +968,11 @@ void NEURGenerator::tick(bool WiFiState) {
 
         switch (try_httpcode) {
           case 400:
-            flags.critical = (attempt_network_count >= (try_request - 1));
+            if (flags.repeated) {
+              flags.critical = true;
+            } else {
+              flags.critical = (attempt_network_count >= (try_request - 1));
+            }
             break;
 
           case 401:
@@ -984,7 +988,11 @@ void NEURGenerator::tick(bool WiFiState) {
             break;
 
           case 404:
-            flags.critical = (attempt_network_count >= (try_request - 1));
+            if (flags.repeated) {
+              flags.critical = true;
+            } else {
+              flags.critical = (attempt_network_count >= (try_request - 1));
+            }
             break;
 
           case 429:
@@ -1102,7 +1110,7 @@ void NEURGenerator::tick(bool WiFiState) {
     } else {
       attempt_network_count++;
 
-      if (flags.repeated && try_httpcode == 401) {
+      if (flags.repeated && (try_httpcode == 400 || try_httpcode == 401)) {
         attempt_network_count = 0;
         attempt_decoder_count = 0;
         attempt_decoder = false;
