@@ -90,7 +90,7 @@ class NEURGenerator {
       OK_PREPARING_DATA    ,     // 2 - подготовка данных
 
       OK_SENDING_REQUEST   ,     // 3 - отправка запроса
-         ,     // 4 - попытка отправки
+      OK_SENDING_ATTEMPT   ,     // 4 - попытка отправки
       OK_RECEIVING_REQUEST ,     // 5 - получение запроса
       OK_RECEIVING_ATTEMPT ,     // 6 - получение ответа
 
@@ -622,7 +622,6 @@ class NEURGenerator {
         case Status::OK_WAITING_COMMAND   :          return expand ? "ожидание команды для нейросети"             : "ожидание команды"        ;
         case Status::OK_PREPARING_DATA    :          return expand ? "подготовка данных для отправки запроса"     : "подготовка данных"       ;
 
-        case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке"   ;
         case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке"   ;
         case Status::OK_SENDING_ATTEMPT   :
           if (!wrk_status) {
