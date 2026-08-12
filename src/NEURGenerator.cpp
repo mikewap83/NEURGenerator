@@ -278,6 +278,8 @@ void NEURGenerator::setStateStatus(Status new_state) {
   state_gen = new_state;
   state_upd = true;
 
+  last_apicommands = millis();
+  
   switch (new_state) {
     case Status::OK_INITIALIZATION_API:
       break;
@@ -288,7 +290,6 @@ void NEURGenerator::setStateStatus(Status new_state) {
     case Status::OK_PREPARING_DATA:
       // Начало подготовки данных
       neur_timer.stop();
-      last_apicommands = millis();
       break;
 
     case Status::OK_SENDING_REQUEST:
@@ -298,7 +299,6 @@ void NEURGenerator::setStateStatus(Status new_state) {
 
       // Данные подготовлены, готовы к отправке
       _str_generations = millis();
-      last_apicommands = millis();
       break;
 
     case Status::OK_SENDING_ATTEMPT:
@@ -307,9 +307,9 @@ void NEURGenerator::setStateStatus(Status new_state) {
     case Status::OK_RECEIVING_REQUEST:
       if (flags.repeated) {
         (url_images[0] != '\0') ? neur_timer.start() : neur_timer.stop();
+
         _str_generations = millis();
       }
-      last_apicommands = millis();
       break;
 
     case Status::OK_RECEIVING_ATTEMPT:
@@ -318,9 +318,9 @@ void NEURGenerator::setStateStatus(Status new_state) {
     case Status::OK_WAITING_FOR_RESULT:
       if (!flags.repeated) {
         (url_images[0] != '\0') ? neur_timer.start() : neur_timer.stop();
+
         _str_generations = millis();
       }
-      last_apicommands = millis();
       break;
 
     case Status::OK_GENERATING_READILY:
@@ -339,15 +339,12 @@ void NEURGenerator::setStateStatus(Status new_state) {
       neur_timer.stop();
 
       flags.repeated = false;
-
-      last_apicommands = millis();
       break;
 
     case Status::OK_TRANSLATE:
       break;
 
     case Status::OK_DOWNLOADING:
-      last_apicommands = millis();
       break;
 
     case Status::OK_RETRY_DOWNLOADING:
@@ -465,6 +462,7 @@ void NEURGenerator::setStateStatus(Status new_state) {
       if (!flags.repeated && _err_cb) {
         _err_cb();
       }
+
       flags.repeated = false;
       break;
 
@@ -473,6 +471,7 @@ void NEURGenerator::setStateStatus(Status new_state) {
       if (!flags.repeated && _err_cb) {
         _err_cb();
       }
+
       flags.repeated = false;
       break;
 
@@ -483,6 +482,7 @@ void NEURGenerator::setStateStatus(Status new_state) {
       if (flags.repeated && _del_cb) {
         _del_cb();
       }
+
       flags.repeated = false;
       break;
 
@@ -495,10 +495,10 @@ void NEURGenerator::setStateStatus(Status new_state) {
       flags.repeated = false;
       break;
 
-    case Status::ERROR_CONVERT:
+    case Status::ERROR_TRANSLATE:
       break;
 
-    case Status::ERROR_CONVERT_LIMIT:
+    case Status::ERROR_TRANSLATE_LIMIT:
       break;
 
     default:
@@ -721,9 +721,9 @@ bool NEURGenerator::request_query(States states, const char* host, uint16_t port
       // Определяем тип ошибки перевода
       if (try_httpcode == 429) {
         if (flags.useloges) Serial.println("❌ Достигнут лимит переводов MyMemory");
-        setStateStatus(Status::ERROR_CONVERT_LIMIT);
+        setStateStatus(Status::ERROR_TRANSLATE_LIMIT);
       } else {
-        setStateStatus(Status::ERROR_CONVERT); // Другие ошибки перевода
+        setStateStatus(Status::ERROR_TRANSLATE); // Другие ошибки перевода
       }
 
       WDT_eTimeout(false);
@@ -846,11 +846,23 @@ void NEURGenerator::tick(bool WiFiState) {
     http_stopped = false;
   }
 
-  if (state_gen == Status::OK_GENERATING_READILY) {
+  if (checkWaitState()) {
     if (url_images && url_images[0] != '\0') {
       if (SafeMillis(last_apicommands, millis()) >= WAIT_PERIOD) {
         setStateStatus(Status::OK_WAITING_COMMAND);
       }
+    }
+  }
+
+  if (checkInfoState()) {
+    if (SafeMillis(last_apicommands, millis()) >= INFO_PERIOD) {
+      setStateStatus(Status::OK_WAITING_COMMAND);
+    }
+  }
+
+  if (checkFailState()) {
+    if (SafeMillis(last_apicommands, millis()) >= FAIL_PERIOD) {
+      setStateStatus(Status::OK_WAITING_COMMAND);
     }
   }
 
