@@ -90,7 +90,7 @@ class NEURGenerator {
       OK_PREPARING_DATA    ,     // 2 - подготовка данных
 
       OK_SENDING_REQUEST   ,     // 3 - отправка запроса
-      OK_SENDING_ATTEMPT   ,     // 4 - попытка отправки
+         ,     // 4 - попытка отправки
       OK_RECEIVING_REQUEST ,     // 5 - получение запроса
       OK_RECEIVING_ATTEMPT ,     // 6 - получение ответа
 
@@ -623,7 +623,15 @@ class NEURGenerator {
         case Status::OK_PREPARING_DATA    :          return expand ? "подготовка данных для отправки запроса"     : "подготовка данных"       ;
 
         case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке"   ;
+        case Status::OK_SENDING_REQUEST   :          return expand ? "подготовка к отправке запроса в нейросеть"  : "подготовка к отправке"   ;
         case Status::OK_SENDING_ATTEMPT   :
+          if (!wrk_status) {
+            wrk_status = (char*)ps_malloc(sz_wrk_status);
+            if (wrk_status) {
+              memset(wrk_status, 0, sz_wrk_status);
+            }
+          }
+
           snprintf(wrk_status, sz_wrk_status,
                    expand ? "отправка запроса в нейросеть (попытка %2d/%2d)" : "отправка (попытка %2d/%2d)",
                    attempt_network_count + 1, try_request);
@@ -631,6 +639,13 @@ class NEURGenerator {
 
         case Status::OK_RECEIVING_REQUEST :          return expand ? "подготовка к загрузке ответа от нейросети"  : "подготовка к загрузке"   ;
         case Status::OK_RECEIVING_ATTEMPT :
+          if (!wrk_status) {
+            wrk_status = (char*)ps_malloc(sz_wrk_status);
+            if (wrk_status) {
+              memset(wrk_status, 0, sz_wrk_status);
+            }
+          }
+
           snprintf(wrk_status, sz_wrk_status,
                    expand ? "загрузка ответа от нейросети (попытка %2d/%2d)" : "загрузка (попытка %2d/%2d)",
                    attempt_network_count + 1, try_receive);
