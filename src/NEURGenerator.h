@@ -26,8 +26,11 @@ constexpr uint16_t TRANS_PORT    =  443;
 
 constexpr uint16_t WDT_SURPLUS   = 20000;
 constexpr uint16_t TIME_PERIOD   =  5000;
-constexpr uint16_t WAIT_PERIOD   = 15000;
 constexpr uint16_t STAY_PERIOD   =  2000;
+
+constexpr uint16_t WAIT_PERIOD   = 15000;
+constexpr uint16_t INFO_PERIOD   = 20000;
+constexpr uint16_t FAIL_PERIOD   = 30000;
 
 constexpr uint16_t PING_DELAYS   =   500;
 constexpr uint8_t  PING_TRYING   =     5;
@@ -95,7 +98,7 @@ class NEURGenerator {
       OK_GENERATING_READILY,     // 8 - готово
       OK_TRANSLATE         ,     // 9 - перевод промта
       OK_DOWNLOADING       ,     // 10 - загрузка картинки
-      OK_RETRY_DOWNLOADING ,     // 11 - повторная загрузка
+      OK_RETRY_DOWNLOADING ,     // 11 - повторная загрузка картинки
       GET_API_POLLEN       ,     // 12 - загрузка баланса
       GET_API_POLLEN_OK    ,     // 13 - загрузка баланса успех
       GET_API_POLLEN_ERR   ,     // 14 - загрузка баланса ошибка
@@ -112,12 +115,12 @@ class NEURGenerator {
       ERROR_INITMEMORY     ,     // 24 - ошибка памяти PSRAM
       ERROR_OVERLOAD       ,     // 25 - ошибка много запросов (429)
       ERROR_AUTHENTICATE   ,     // 26 - ошибка авторизации (401)
-      ERROR_BALANCEBUDGET  ,     // 27 - ошибка недостаточно баланса (402)
-      ERROR_ACCESSDENIED   ,     // 28 - ошибка доступа (403)
-      ERROR_LOADEDOLDIMAGES,     // 29 - изображение недоступно
+      ERROR_BALANCEBUDGET  ,     // 27 - ошибка авторизации (402)
+      ERROR_ACCESSDENIED   ,     // 28 - ошибка доступ (403)
+      ERROR_LOADEDOLDIMAGES,     // 29 - ошибка изображение недоступно (401)
       ERROR_UNAVAILABLE    ,     // 30 - Сервер недоступен (500)
-      ERROR_CONVERT        ,     // 31 - Ошибка перевода
-      ERROR_CONVERT_LIMIT        // 32 - Лимит переводов
+      ERROR_TRANSLATE      ,     // 31 - Ошибка перевода
+      ERROR_TRANSLATE_LIMIT      // 32 - Лимит переводов
     };
 
     enum class APILevels : uint8_t {
@@ -942,6 +945,34 @@ class NEURGenerator {
     }
 
     bool ReaderJPG(Stream& stream);
+	
+	bool checkWaitState() {
+      return state_gen == Status::OK_GENERATING_READILY;
+    }
+
+    bool checkInfoState() {
+      return state_gen == Status::GET_API_POLLEN_OK ||
+             state_gen == Status::GET_API_POLLEN_ERR ||
+             state_gen == Status::GET_API_MODELS_OK ||
+             state_gen == Status::GET_API_MODELS_ERR;
+    }
+
+    bool checkFailState() {
+      return state_gen == Status::ERROR_AIGENERATION ||
+             state_gen == Status::ERROR_REQUESTS ||
+             state_gen == Status::ERROR_RESPONSE ||
+             state_gen == Status::ERROR_RECEIVING ||
+             state_gen == Status::ERROR_DECODINGS ||
+             state_gen == Status::ERROR_CONNECTION ||
+             state_gen == Status::ERROR_INITMEMORY ||
+             state_gen == Status::ERROR_OVERLOAD ||
+             state_gen == Status::ERROR_AUTHENTICATE ||
+             state_gen == Status::ERROR_BALANCEBUDGET ||
+             state_gen == Status::ERROR_ACCESSDENIED ||
+             state_gen == Status::ERROR_UNAVAILABLE ||
+             state_gen == Status::ERROR_TRANSLATE ||
+             state_gen == Status::ERROR_TRANSLATE_LIMIT;
+    }
 
     // system
     void cleanupHttp();
