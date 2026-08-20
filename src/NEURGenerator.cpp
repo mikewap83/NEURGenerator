@@ -324,7 +324,6 @@ void NEURGenerator::setStateStatus(Status new_state) {
       break;
 
     case Status::OK_GENERATING_READILY:
-      created_image++;
       _end_generations = SafeMillis(_str_generations, millis());
       _end_generations = (_end_generations / TIME_PERIOD) * TIME_PERIOD;
 
@@ -334,6 +333,12 @@ void NEURGenerator::setStateStatus(Status new_state) {
 
       if (!flags.repeated && _end_cb) {
         _end_cb();
+      }
+
+      if (!flags.repeated) {
+        created_image++;
+      } else {
+        display_image++;
       }
 
       neur_timer.stop();
