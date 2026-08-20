@@ -731,12 +731,16 @@ class NEURGenerator {
       return 0;
     }
 
-    uint16_t getGeneration() {
+    uint16_t getTmrExecute() {
       return _end_generations / 1000;
     }
 
-    uint32_t getImageCount() {
+    uint32_t getImgCreated() {
       return created_image;
+    }
+
+    uint32_t getImgDisplay() {
+      return display_image;
     }
 
     uint16_t getErrRequest() {
@@ -789,6 +793,7 @@ class NEURGenerator {
     bool state_upd = false;
 
     uint32_t created_image = 0;
+	uint32_t display_image = 0;
 
     char*     jpegDataBuf = nullptr;
     size_t sz_jpegDataBuf =  262144;
