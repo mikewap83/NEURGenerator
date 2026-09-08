@@ -387,7 +387,7 @@ class NEURGenerator {
       return ok_pings;
     }
 
-    bool data_prepare(const char* prompt = "", const char* suffix = "", const char* modifi = "", const char* denial = "", bool translate = false);
+    bool data_prepare(const char* prompt = "", const char* styles = "", const char* modifi = "", const char* denial = "", bool translate = false);
 
     bool send_request();
     bool resp_receive();
