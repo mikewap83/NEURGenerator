@@ -1603,7 +1603,7 @@ bool NEURGenerator::ParserModels(gson::Parser& json) {
 }
 
 bool NEURGenerator::data_prepare(const char* prompt
-                                 , const char* suffix
+                                 , const char* styles
                                  , const char* modifi
                                  , const char* denial
                                  , bool translate) {
@@ -1832,9 +1832,9 @@ bool NEURGenerator::data_prepare(const char* prompt
   }
 
   // 6. Добавляем суффикс и модификаторы
-  if (suffix && suffix[0] != '\0') {
+  if (styles && styles[0] != '\0') {
     if (strlen(tmp_prompt) > 0) strcat(tmp_prompt, ", ");
-    strcat(tmp_prompt, suffix);
+    strcat(tmp_prompt, styles);
   }
 
   if (modifi && modifi[0] != '\0') {
