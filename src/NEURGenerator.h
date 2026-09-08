@@ -52,9 +52,9 @@ constexpr size_t   sz_enc_prompt =  8192;
 constexpr size_t   sz_enc_denial =  2048;
 constexpr size_t   sz_JsonBuffer =  4096;
 
-constexpr size_t  sz_api_models  =   256;
-constexpr size_t  sz_api_pollen  =   128;
-constexpr size_t  sz_model_names =   256;
+constexpr size_t  sz_api_models  =    64;
+constexpr size_t  sz_api_pollen  =    16;
+constexpr size_t  sz_model_names =   512;
 constexpr size_t  sz_model_title =   512;
 constexpr size_t  sz_model_price =   128;
 
