@@ -1831,7 +1831,12 @@ bool NEURGenerator::data_prepare(const char* prompt
     if (flags.useloges) Serial.println("✅ Использован оригинальный промпт (перевод не нужен)");
   }
 
-  // 6. Добавляем суффикс и модификаторы
+  // 6. Восстанавливаем статус после перевода если ошибка при переводе 
+  if (state_gen != Status::OK_PREPARING_DATA) {
+    state_gen = Status::OK_PREPARING_DATA;
+  }
+
+  // 7. Добавляем суффикс и модификаторы
   if (styles && styles[0] != '\0') {
     if (strlen(tmp_prompt) > 0) strcat(tmp_prompt, ", ");
     strcat(tmp_prompt, styles);
@@ -1847,20 +1852,20 @@ bool NEURGenerator::data_prepare(const char* prompt
     Serial.println(tmp_prompt);
   }
 
-  // 7. URL-кодирование промпта
+  // 8. URL-кодирование промпта
   url_encode(tmp_prompt, enc_prompt);
 
-  // 8. Генерация случайного seed
+  // 9. Генерация случайного seed
   uint32_t seed = esp_random() % 100000000;
 
-  // 9. Получение строковых значений настроек
+  // 10. Получение строковых значений настроек
   const char* api_models_str = getAPIModelsString();
   const char* api_levels_str = getAPILevelsString();
   const char* api_scales_str = getAPIScalesString();
   const char* api_enhanc_str = api_enhanc ? "true" : "false";
   const char* api_filter_str = api_filter ? "true" : "false";
 
-  // 10. Формирование URL
+  // 11. Формирование URL
   if (flags.api_freely) {
     uint16_t _requestFreeW = 480;
     uint16_t _requestFreeH = 320;
@@ -1914,7 +1919,7 @@ bool NEURGenerator::data_prepare(const char* prompt
     }
   }
 
-  // 11. Логирование сформированного URL
+  // 12. Логирование сформированного URL
   if (flags.useloges) {
     Serial.print("🔗 Сформирован URL: ");
     Serial.println(url_images);
