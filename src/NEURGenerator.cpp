@@ -1834,6 +1834,7 @@ bool NEURGenerator::data_prepare(const char* prompt
   // 6. Восстанавливаем статус после перевода если ошибка при переводе 
   if (state_gen != Status::OK_PREPARING_DATA) {
     state_gen = Status::OK_PREPARING_DATA;
+    state_upd = true;
   }
 
   // 7. Добавляем суффикс и модификаторы
