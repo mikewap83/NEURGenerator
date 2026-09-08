@@ -66,7 +66,7 @@ constexpr size_t  BUF_EXPAND_MAX = 786432;
 #define API_NO_ACCESS         "нет доступа"
 #define API_ERROR_JSON        "ошибка чтения"
 
-#define API_MODELS_NAMES      "dreamshaper"
+#define API_MODELS_NAMES      "lykon/dreamshaper-8-lcm"
 #define API_MODELS_TITLE      "DreamShaper 8 LCM"
 #define API_MODELS_PRICE      "0.0001"
 #define API_MODELS_COUNT      5
