@@ -212,7 +212,7 @@ bool NEURGenerator::create_example_config(const char* filename) {
     "{\n"
     "  \"models\": [\n"
     "    {\n"
-    "      \"name\": \"flux\",\n"
+    "      \"name\": \"black-forest-labs/flux.1-schnell\",\n"
     "      \"max_dimensionW\": 1024,\n"
     "      \"max_dimensionH\": 768,\n"
     "      \"scales\": [\n"
@@ -222,7 +222,7 @@ bool NEURGenerator::create_example_config(const char* filename) {
     "      ]\n"
     "    },\n"
     "    {\n"
-    "      \"name\": \"sana\",\n"
+    "      \"name\": \"lykon/dreamshaper-8-lcm\",\n"
     "      \"max_dimensionW\": 576,\n"
     "      \"max_dimensionH\": 384,\n"
     "      \"scales\": [\n"
@@ -232,17 +232,7 @@ bool NEURGenerator::create_example_config(const char* filename) {
     "      ]\n"
     "    },\n"
     "    {\n"
-    "      \"name\": \"dreamshaper\",\n"
-    "      \"max_dimensionW\": 576,\n"
-    "      \"max_dimensionH\": 384,\n"
-    "      \"scales\": [\n"
-    "        { \"level\": 0, \"width\": 480, \"height\": 320 },\n"
-    "        { \"level\": 1, \"width\": 528, \"height\": 352 },\n"
-    "        { \"level\": 2, \"width\": 576, \"height\": 384 }\n"
-    "      ]\n"
-    "    },\n"
-    "    {\n"
-    "      \"name\": \"zimage\",\n"
+    "      \"name\": \"tongyi-mai/z-image-turbo\",\n"
     "      \"max_dimensionW\": 960,\n"
     "      \"max_dimensionH\": 640,\n"
     "      \"scales\": [\n"
@@ -1661,46 +1651,94 @@ bool NEURGenerator::data_prepare(const char* prompt
         Serial.printf("⚠️ Модель '%s' не найдена в конфиге, используем fallback\n", api_models);
       }
 
-      // FALLBACK: FLUX
-      if (strcmp(api_models, "flux") == 0) {
+      // FALLBACK: black-forest-labs/flux.1-schnell
+      if (strcmp(api_models, "black-forest-labs/flux.1-schnell") == 0) {
         switch (api_scales) {
-          case APIScales::SCALE_LOW   : _requestW = 512; _requestH = 384; break;
-          case APIScales::SCALE_MEDIUM: _requestW = 768; _requestH = 576; break;
-          case APIScales::SCALE_HIGH  : _requestW = 1024; _requestH = 768; break;
-          default                     : _requestW = 512; _requestH = 384; break;
+          case APIScales::SCALE_LOW   : 
+            _requestW = 512; 
+            _requestH = 384; 
+            break;
+          case APIScales::SCALE_MEDIUM: 
+            _requestW = 768; 
+            _requestH = 576; 
+            break;
+          case APIScales::SCALE_HIGH  : 
+            _requestW = 1024; 
+            _requestH = 768; 
+            break;
+          default                     : 
+            _requestW = 512; 
+            _requestH = 384; 
+            break;
         }
         max_dimensionW = 1024;
         max_dimensionH = 768;
       }
-      // FALLBACK: SANA
-      else if (strcmp(api_models, "sana") == 0) {
+      // FALLBACK: lykon/dreamshaper-8-lcm
+      else if (strcmp(api_models, "lykon/dreamshaper-8-lcm") == 0) {
         switch (api_scales) {
-          case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
-          case APIScales::SCALE_MEDIUM: _requestW = 528; _requestH = 352; break;
-          case APIScales::SCALE_HIGH  : _requestW = 576; _requestH = 384; break;
-          default                     : _requestW = 480; _requestH = 320; break;
+          case APIScales::SCALE_LOW   : 
+            _requestW = 480; 
+            _requestH = 320; 
+            break;
+          case APIScales::SCALE_MEDIUM: 
+            _requestW = 528; 
+            _requestH = 352; 
+            break;
+          case APIScales::SCALE_HIGH  : 
+            _requestW = 576; 
+            _requestH = 384; 
+            break;
+          default                     : 
+            _requestW = 480; 
+            _requestH = 320; 
+            break;
         }
         max_dimensionW = 576;
         max_dimensionH = 384;
       }
-      // FALLBACK: DREAMSHAPER
-      else if (strcmp(api_models, "dreamshaper") == 0) {
+      // FALLBACK: tongyi-mai/z-image-turbo
+      else if (strcmp(api_models, "tongyi-mai/z-image-turbo") == 0) {
         switch (api_scales) {
-          case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
-          case APIScales::SCALE_MEDIUM: _requestW = 528; _requestH = 352; break;
-          case APIScales::SCALE_HIGH  : _requestW = 576; _requestH = 384; break;
-          default                     : _requestW = 480; _requestH = 320; break;
+          case APIScales::SCALE_LOW:
+            _requestW = 480;
+            _requestH = 320;
+            break;
+          case APIScales::SCALE_MEDIUM:
+            _requestW = 720;
+            _requestH = 480;
+            break;
+          case APIScales::SCALE_HIGH:
+            _requestW = 960;
+            _requestH = 640;
+            break;
+          default:
+            _requestW = 480;
+            _requestH = 320;
+            break;
         }
-        max_dimensionW = 576;
-        max_dimensionH = 384;
+        max_dimensionW = 960;
+        max_dimensionH = 640;
       }
-      // FALLBACK: ZIMAGE (обычный режим)
+      // ⭐ FALLBACK: другие
       else {
         switch (api_scales) {
-          case APIScales::SCALE_LOW   : _requestW = 480; _requestH = 320; break;
-          case APIScales::SCALE_MEDIUM: _requestW = 720; _requestH = 480; break;
-          case APIScales::SCALE_HIGH  : _requestW = 960; _requestH = 640; break;
-          default                     : _requestW = 480; _requestH = 320; break;
+          case APIScales::SCALE_LOW   : 
+            _requestW = 480; 
+            _requestH = 320; 
+            break;
+          case APIScales::SCALE_MEDIUM: 
+            _requestW = 720; 
+            _requestH = 480; 
+            break;
+          case APIScales::SCALE_HIGH  : 
+            _requestW = 960; 
+            _requestH = 640; 
+            break;
+          default                     : 
+            _requestW = 480; 
+            _requestH = 320; 
+            break;
         }
         max_dimensionW = 960;
         max_dimensionH = 640;
@@ -2110,9 +2148,8 @@ bool NEURGenerator::ReaderJPG(Stream& stream) {
   bool is_progress = false;
   bool is_complete = false;
 
-  bool is_flux_adjust = (flags.api_adjust && strcmp(api_models, "flux") == 0);
-  bool is_sana_adjust = (flags.api_adjust && strcmp(api_models, "sana") == 0);
-  bool is_dreamshaper_adjust = (flags.api_adjust && strcmp(api_models, "dreamshaper") == 0);
+  bool is_flag_adjust = api_adjust && (strcmp(api_models, "black-forest-labs/flux.1-schnell") == 0 || 
+                                      strcmp(api_models, "lykon/dreamshaper-8-lcm") == 0);
 
   // Читаем данные
   while (stream.available() > 0) {
@@ -2164,8 +2201,8 @@ bool NEURGenerator::ReaderJPG(Stream& stream) {
 
       continue;
     } else {
-      // ПЕРВОЕ УСЛОВИЕ: FLUX/SANA/DREAMSHAPER С АДАПТИВНЫМ РАЗМЕРОМ
-      if (is_flux_adjust || is_sana_adjust || is_dreamshaper_adjust) {
+      // ПЕРВОЕ УСЛОВИЕ: С АДАПТИВНЫМ РАЗМЕРОМ
+      if (is_flag_adjust) {
         if (!type_detect && jpegDataSum >= 16384) {
           is_progress = isProgressiveJPEG((uint8_t*)jpegDataBuf, jpegDataSum);
           type_detect = true;
@@ -2278,7 +2315,7 @@ bool NEURGenerator::ReaderJPG(Stream& stream) {
     return false;
   }
 
-  if (is_flux_adjust || is_sana_adjust || is_dreamshaper_adjust) {
+  if (is_flag_adjust) {
     if (is_progress) {
       if (jpegDataSum < 100) {
         if (flags.useloges) Serial.println("❌ Недостаточно данных для первого слоя");
