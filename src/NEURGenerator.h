@@ -547,8 +547,8 @@ class NEURGenerator {
         }
 
         // ❌ Не нашли в конфиге - используем fallback
-        // FALLBACK: FLUX
-        if (strcmp(api_models, "flux") == 0) {
+        // FALLBACK: black-forest-labs/flux.1-schnell
+        if (strcmp(api_models, "black-forest-labs/flux.1-schnell") == 0) {
           switch (api_scales) {
             case APIScales::SCALE_LOW   : return "width=512&height=384" ;
             case APIScales::SCALE_MEDIUM: return "width=768&height=576" ;
@@ -556,8 +556,8 @@ class NEURGenerator {
             default                     : return "width=512&height=384" ;
           }
         }
-        // FALLBACK: SANA
-        else if (strcmp(api_models, "sana") == 0) {
+        // FALLBACK: lykon/dreamshaper-8-lcm
+        else if (strcmp(api_models, "lykon/dreamshaper-8-lcm") == 0) {
           switch (api_scales) {
             case APIScales::SCALE_LOW   : return "width=480&height=320";
             case APIScales::SCALE_MEDIUM: return "width=528&height=352";
@@ -565,16 +565,16 @@ class NEURGenerator {
             default                     : return "width=480&height=320";
           }
         }
-        // FALLBACK: DREAMSHAPER
-        else if (strcmp(api_models, "dreamshaper") == 0) {
+		// ⭐ FALLBACK: tongyi-mai/z-image-turbo
+        else if (strcmp(api_models, "tongyi-mai/z-image-turbo") == 0) {
           switch (api_scales) {
             case APIScales::SCALE_LOW   : return "width=480&height=320";
-            case APIScales::SCALE_MEDIUM: return "width=528&height=352";
-            case APIScales::SCALE_HIGH  : return "width=576&height=384";
+            case APIScales::SCALE_MEDIUM: return "width=720&height=480";
+            case APIScales::SCALE_HIGH  : return "width=960&height=640";
             default                     : return "width=480&height=320";
           }
         }
-        // FALLBACK: ZIMAGE (обычный режим)
+        // ⭐ FALLBACK: другие
         else {
           switch (api_scales) {
             case APIScales::SCALE_LOW   : return "width=480&height=320";
