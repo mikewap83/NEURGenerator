@@ -54,9 +54,9 @@ constexpr size_t   sz_JsonBuffer =  4096;
 
 constexpr size_t  sz_api_models  =    64;
 constexpr size_t  sz_api_pollen  =    16;
-constexpr size_t  sz_model_names =   512;
-constexpr size_t  sz_model_title =   512;
-constexpr size_t  sz_model_price =   128;
+constexpr size_t  sz_model_names =  1024;
+constexpr size_t  sz_model_title =  1024;
+constexpr size_t  sz_model_price =   256;
 
 constexpr size_t  BUF_EXPAND_INT =  65536;
 constexpr size_t  BUF_EXPAND_MAX = 786432;
@@ -69,7 +69,7 @@ constexpr size_t  BUF_EXPAND_MAX = 786432;
 #define API_MODELS_NAMES      "lykon/dreamshaper-8-lcm"
 #define API_MODELS_TITLE      "DreamShaper 8 LCM"
 #define API_MODELS_PRICE      "0.0001"
-#define API_MODELS_COUNT      5
+#define API_MODELS_COUNT      10
 
 using namespace NEURGeneratorConstants;
 
